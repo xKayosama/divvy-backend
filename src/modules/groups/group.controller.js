@@ -1,8 +1,8 @@
-const User = require('../users/User');
-const Group = require('./Group');
-const GroupMember = require('./GroupMember');
-const Expense = require('../expenses/Expense');
-const Bill = require('../bills/Bill');
+const User = require("../users/User");
+const Group = require("./Group");
+const GroupMember = require("./GroupMember");
+const Expense = require("../expenses/Expense");
+const Bill = require("../bills/Bill");
 
 const createGroup = async (req, res) => {
   try {
@@ -11,34 +11,34 @@ const createGroup = async (req, res) => {
     if (!name || !name.trim()) {
       return res.status(400).json({
         success: false,
-        message: 'Group name is required.'
+        message: "Group name is required.",
       });
     }
 
     const group = await Group.create({
       name: name.trim(),
-      ownerId: req.user._id
+      ownerId: req.user._id,
     });
 
     await GroupMember.create({
       groupId: group._id,
       userId: req.user._id,
-      role: 'OWNER'
+      role: "OWNER",
     });
 
     return res.status(201).json({
       success: true,
-      message: 'Group created successfully.',
+      message: "Group created successfully.",
       data: {
-        group
-      }
+        group,
+      },
     });
   } catch (error) {
-    console.error('Create group error:', error);
+    console.error("Create group error:", error);
 
     return res.status(500).json({
       success: false,
-      message: 'Something went wrong while creating the group.'
+      message: "Something went wrong while creating the group.",
     });
   }
 };
@@ -47,38 +47,40 @@ const getMyGroups = async (req, res) => {
   try {
     const memberships = await GroupMember.find({
       userId: req.user._id,
-      status: 'ACTIVE'
+      status: "ACTIVE",
     }).populate({
-      path: 'groupId',
+      path: "groupId",
       populate: {
-        path: 'ownerId',
-        select: 'firstName lastName email'
-      }
+        path: "ownerId",
+        select: "firstName lastName email",
+      },
     });
 
     // Population can return null for deleted groups, or undefined for legacy
     // memberships that have not yet had householdId migrated to groupId.
-    const groups = memberships.filter((membership) => membership.groupId).map((membership) => ({
-      id: membership.groupId._id,
-      name: membership.groupId.name,
-      currency: membership.groupId.currency,
-      role: membership.role,
-      owner: membership.groupId.ownerId,
-      joinedAt: membership.joinedAt
-    }));
+    const groups = memberships
+      .filter((membership) => membership.groupId)
+      .map((membership) => ({
+        id: membership.groupId._id,
+        name: membership.groupId.name,
+        currency: membership.groupId.currency,
+        role: membership.role,
+        owner: membership.groupId.ownerId,
+        joinedAt: membership.joinedAt,
+      }));
 
     return res.status(200).json({
       success: true,
       data: {
-        groups
-      }
+        groups,
+      },
     });
   } catch (error) {
-    console.error('Get groups error:', error);
+    console.error("Get groups error:", error);
 
     return res.status(500).json({
       success: false,
-      message: 'Something went wrong while retrieving your groups.'
+      message: "Something went wrong while retrieving your groups.",
     });
   }
 };
@@ -87,10 +89,10 @@ const getGroupById = async (req, res) => {
   try {
     const members = await GroupMember.find({
       groupId: req.group._id,
-      status: 'ACTIVE'
+      status: "ACTIVE",
     }).populate({
-      path: 'userId',
-      select: 'firstName lastName email avatar'
+      path: "userId",
+      select: "firstName lastName email avatar",
     });
 
     return res.status(200).json({
@@ -103,7 +105,7 @@ const getGroupById = async (req, res) => {
           ownerId: req.group.ownerId,
           role: req.membership.role,
           createdAt: req.group.createdAt,
-          updatedAt: req.group.updatedAt
+          updatedAt: req.group.updatedAt,
         },
 
         members: members.map((member) => ({
@@ -113,16 +115,16 @@ const getGroupById = async (req, res) => {
           email: member.userId.email,
           avatar: member.userId.avatar,
           role: member.role,
-          joinedAt: member.joinedAt
-        }))
-      }
+          joinedAt: member.joinedAt,
+        })),
+      },
     });
   } catch (error) {
-    console.error('Get group error:', error);
+    console.error("Get group error:", error);
 
     return res.status(500).json({
       success: false,
-      message: 'Something went wrong while retrieving the group.'
+      message: "Something went wrong while retrieving the group.",
     });
   }
 };
@@ -134,61 +136,61 @@ const addGroupMember = async (req, res) => {
     if (!email) {
       return res.status(400).json({
         success: false,
-        message: 'Email is required.'
+        message: "Email is required.",
       });
     }
 
     // Only the group owner can add members
-    if (req.membership.role !== 'OWNER') {
+    if (req.membership.role !== "OWNER") {
       return res.status(403).json({
         success: false,
-        message: 'Only the group owner can add members.'
+        message: "Only the group owner can add members.",
       });
     }
 
     // Find the user
     const user = await User.findOne({
-      email: email.toLowerCase()
+      email: email.toLowerCase(),
     });
 
     if (!user) {
       return res.status(404).json({
         success: false,
-        message: 'No user found with this email.'
+        message: "No user found with this email.",
       });
     }
 
     // Check if already a member
     const existingMembership = await GroupMember.findOne({
       groupId: req.group._id,
-      userId: user._id
+      userId: user._id,
     });
 
-    if (existingMembership && existingMembership.status !== 'INACTIVE') {
+    if (existingMembership && existingMembership.status !== "INACTIVE") {
       return res.status(409).json({
         success: false,
-        message: 'User is already a member of this group.'
+        message: "User is already a member of this group.",
       });
     }
 
     // Reuse removed memberships so rejoining does not create duplicate records.
     let membership;
     if (existingMembership) {
-      existingMembership.status = 'ACTIVE';
-      existingMembership.role = 'MEMBER';
+      existingMembership.status = "ACTIVE";
+      existingMembership.role = "MEMBER";
       existingMembership.joinedAt = new Date();
       membership = await existingMembership.save();
     } else {
       membership = await GroupMember.create({
         groupId: req.group._id,
         userId: user._id,
-        role: 'MEMBER'
+        role: "MEMBER",
       });
     }
 
     return res.status(201).json({
       success: true,
-      message: 'Member added successfully.',
+      message: "Member added successfully.",
       data: {
         member: {
           id: user._id,
@@ -196,16 +198,16 @@ const addGroupMember = async (req, res) => {
           lastName: user.lastName,
           email: user.email,
           role: membership.role,
-          joinedAt: membership.joinedAt
-        }
-      }
+          joinedAt: membership.joinedAt,
+        },
+      },
     });
   } catch (error) {
-    console.error('Add group member error:', error);
+    console.error("Add group member error:", error);
 
     return res.status(500).json({
       success: false,
-      message: 'Something went wrong while adding the member.'
+      message: "Something went wrong while adding the member.",
     });
   }
 };
@@ -215,10 +217,10 @@ const removeGroupMember = async (req, res) => {
     const { userId } = req.params;
 
     // Only the owner can remove members
-    if (req.membership.role !== 'OWNER') {
+    if (req.membership.role !== "OWNER") {
       return res.status(403).json({
         success: false,
-        message: 'Only the group owner can remove members.'
+        message: "Only the group owner can remove members.",
       });
     }
 
@@ -226,36 +228,36 @@ const removeGroupMember = async (req, res) => {
     if (req.user._id.toString() === userId) {
       return res.status(400).json({
         success: false,
-        message: 'The group owner cannot remove themselves.'
+        message: "The group owner cannot remove themselves.",
       });
     }
 
     const membership = await GroupMember.findOne({
       groupId: req.group._id,
       userId,
-      status: 'ACTIVE'
+      status: "ACTIVE",
     });
 
     if (!membership) {
       return res.status(404).json({
         success: false,
-        message: 'Group member not found.'
+        message: "Group member not found.",
       });
     }
 
-    membership.status = 'INACTIVE';
+    membership.status = "INACTIVE";
     await membership.save();
 
     return res.status(200).json({
       success: true,
-      message: 'Member removed successfully.'
+      message: "Member removed successfully.",
     });
   } catch (error) {
-    console.error('Remove group member error:', error);
+    console.error("Remove group member error:", error);
 
     return res.status(500).json({
       success: false,
-      message: 'Something went wrong while removing the member.'
+      message: "Something went wrong while removing the member.",
     });
   }
 };
@@ -266,33 +268,32 @@ const getGroupMembers = async (req, res) => {
 
     const members = await GroupMember.find({
       groupId,
-      status: 'ACTIVE'
+      status: "ACTIVE",
     })
       .populate({
-        path: 'userId',
-        select: 'firstName lastName email avatar'
+        path: "userId",
+        select: "firstName lastName email avatar",
       })
       .sort({
         role: 1,
-        joinedAt: 1
+        joinedAt: 1,
       });
 
     return res.status(200).json({
       code: 200,
       success: true,
-      message: 'Group members retrieved successfully.',
+      message: "Group members retrieved successfully.",
       data: {
-        members
-      }
+        members,
+      },
     });
   } catch (error) {
-    console.error('Get group members error:', error);
+    console.error("Get group members error:", error);
 
     return res.status(500).json({
       code: 500,
       success: false,
-      message:
-        'Something went wrong while retrieving group members.'
+      message: "Something went wrong while retrieving group members.",
     });
   }
 };
@@ -308,7 +309,7 @@ const updateGroup = async (req, res) => {
       return res.status(404).json({
         code: 404,
         success: false,
-        message: 'Group not found.'
+        message: "Group not found.",
       });
     }
 
@@ -317,7 +318,7 @@ const updateGroup = async (req, res) => {
       return res.status(403).json({
         code: 403,
         success: false,
-        message: 'Only the group owner can update this group.'
+        message: "Only the group owner can update this group.",
       });
     }
 
@@ -328,7 +329,7 @@ const updateGroup = async (req, res) => {
         return res.status(400).json({
           code: 400,
           success: false,
-          message: 'Group name is required.'
+          message: "Group name is required.",
         });
       }
 
@@ -342,7 +343,7 @@ const updateGroup = async (req, res) => {
         return res.status(400).json({
           code: 400,
           success: false,
-          message: 'Currency is required.'
+          message: "Currency is required.",
         });
       }
 
@@ -354,19 +355,18 @@ const updateGroup = async (req, res) => {
     return res.status(200).json({
       code: 200,
       success: true,
-      message: 'Group updated successfully.',
+      message: "Group updated successfully.",
       data: {
-        group
-      }
+        group,
+      },
     });
   } catch (error) {
-    console.error('Update group error:', error);
+    console.error("Update group error:", error);
 
     return res.status(500).json({
       code: 500,
       success: false,
-      message:
-        'Something went wrong while updating the group.'
+      message: "Something went wrong while updating the group.",
     });
   }
 };
@@ -381,7 +381,7 @@ const deleteGroup = async (req, res) => {
       return res.status(404).json({
         code: 404,
         success: false,
-        message: 'Group not found.'
+        message: "Group not found.",
       });
     }
 
@@ -390,7 +390,7 @@ const deleteGroup = async (req, res) => {
       return res.status(403).json({
         code: 403,
         success: false,
-        message: 'Only the group owner can delete this group.'
+        message: "Only the group owner can delete this group.",
       });
     }
 
@@ -398,36 +398,34 @@ const deleteGroup = async (req, res) => {
 
     // Remove group memberships
     await GroupMember.deleteMany({
-      groupId
+      groupId,
     });
 
     // Remove group expenses
     await Expense.deleteMany({
-      groupId
+      groupId,
     });
 
     // Remove group bills
     await Bill.deleteMany({
-      groupId
+      groupId,
     });
 
     return res.status(200).json({
       code: 200,
       success: true,
-      message: 'Group deleted successfully.'
+      message: "Group deleted successfully.",
     });
   } catch (error) {
-    console.error('Delete group error:', error);
+    console.error("Delete group error:", error);
 
     return res.status(500).json({
       code: 500,
       success: false,
-      message:
-        'Something went wrong while deleting the group.'
+      message: "Something went wrong while deleting the group.",
     });
   }
 };
-
 
 module.exports = {
   createGroup,
@@ -437,5 +435,5 @@ module.exports = {
   removeGroupMember,
   getGroupMembers,
   updateGroup,
-  deleteGroup
+  deleteGroup,
 };
