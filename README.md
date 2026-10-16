@@ -346,3 +346,39 @@ category casing/whitespace is normalized for the response without editing data.
 Bills and settlements never contribute to this breakdown. Current balances,
 bill summaries and reminders retain their existing behavior. No migration,
 new endpoint, or dependency is required.
+
+
+## Month-over-month spending comparison
+
+The dashboard adds nullable `data.spendingComparison`. For `this_month`, it
+compares the current UTC calendar month with last month. For `last_month`, it
+compares last month with the preceding month. For `all_time` (including the default
+request), it is null. It uses group expenses' dates and full amounts, excludes
+bills/settlements, and does not change live balances or reminder data.
+
+```json
+{
+  "timeZone": "UTC",
+  "basis": "calendar_month",
+  "current": { "startDate": "2026-10-01", "endDate": "2026-10-31", "amount": 2000, "isInProgress": true },
+  "previous": { "startDate": "2026-09-01", "endDate": "2026-09-30", "amount": 2500 },
+  "difference": -500,
+  "percentageChange": -20,
+  "direction": "decrease"
+}
+```
+
+Date labels are inclusive. Calculations use inclusive month start/exclusive next
+month start and integer cents, matching summary.totalExpenses and category totals.
+Difference is selected minus previous; direction is increase/decrease/unchanged.
+Percentage change is signed, rounded to two decimals, and null whenever previous
+spending is zero (including both months empty). A decrease to zero from a nonzero
+previous month is -100 percent. Missing prior-month entries mean zero recorded
+spending, not an estimate of spending outside the app.
+
+These are full calendar-month windows, not matched month-to-date windows. The
+current month may still be in progress and includes future-dated recorded expenses
+within that month, consistent with existing period totals. `current.isInProgress`
+is true for this_month so the UI can communicate that distinction. All-time has
+no meaningful prior calendar month. No new endpoint, migration or dependency is
+needed; existing query validation and group authorization still apply.

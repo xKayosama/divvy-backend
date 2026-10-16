@@ -1,3 +1,4 @@
+const { buildSpendingComparison } = require('./dashboard.comparison');
 const { buildCategoryBreakdown } = require('./dashboard.categories');
 const { resolveDashboardPeriod } = require('./dashboard.period');
 const { presentBill, buildBillReminders, dayWindow } = require('../bills/bill.reminders');
@@ -121,6 +122,7 @@ const getGroupDashboard = async (req, res) => {
     // Use the same cents totals for the spending card and category breakdown.
     const { totalAmount: totalExpenses, spendingByCategory } = buildCategoryBreakdown(periodExpenses);
     const totalPaid = totalExpenses;
+    const spendingComparison = buildSpendingComparison(expenses, selection);
 
     const totalOwed = periodExpenses.reduce(
       (total, expense) =>
@@ -168,6 +170,7 @@ const getGroupDashboard = async (req, res) => {
       data: {
         period,
         spendingByCategory,
+        spendingComparison,
         summary: {
           totalExpenses,
           totalPaid,
