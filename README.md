@@ -234,3 +234,59 @@ and optional `paidAt`. The authenticated member is the sender. Both parties must
 be active group members. `GET /api/groups/:id/settlements/history?page=1&limit=20`
 returns payment history. Recorded payments adjust net balances and dashboard
 balances without changing expense totals. See the Usage Manual for limitations.
+
+## Bill reminders and due-date status
+
+`GET /api/groups/:id/dashboard` now includes `data.billReminders`, under the
+existing bearer authentication and ACTIVE group membership checks. No new
+endpoint, scheduler, migration, or push-notification setup is required.
+
+Bills use **UTC calendar days**, matching the date-only bill contract:
+- An unpaid bill before today's UTC midnight is `OVERDUE`.
+- An unpaid bill due today or later is `PENDING`, even if a saved legacy status
+  says OVERDUE. Today is included until 23:59:59.999 UTC.
+- `PAID` always remains paid and is excluded from every reminder group.
+
+Status is derived on reads, without changing stored documents. Bill list,
+detail, creation/update responses and dashboard totals use this rule. Bill list
+`status=PENDING|OVERDUE|PAID` filters use equivalent database date predicates
+before pagination/counting, combined with category/search/recurring filters.
+Invalid status values return 400. Existing paid edit/delete locks remain intact.
+
+The additive dashboard field has this shape:
+
+```json
+{
+  "asOf": "2026-10-16T12:00:00.000Z",
+  "timeZone": "UTC",
+  "windowDays": 7,
+  "overdue": { "count": 0, "amount": 0, "bills": [] },
+  "dueToday": { "count": 0, "amount": 0, "bills": [] },
+  "dueSoon": { "count": 0, "amount": 0, "bills": [] }
+}
+```
+
+`dueSoon` covers tomorrow through the seventh day from today, inclusive (today
+is its own group). Counts and amounts include all matching group bills; amounts
+use the group's currency and cents rounding. Each `bills` preview contains at
+most five populated bill records, ordered by dueDate ascending then ID, with
+effective status. Use the existing paginated bill list to see additional bills.
+The existing `upcomingBills` preview now includes bills due today. Paid bills
+leave reminders on the next fetch. Responses refresh when fetched; no background
+notifications or mobile reminder UI are added by this backend change.
+
+
+## Bill payment timestamp
+
+Bills now expose nullable `paidAt` (ISO timestamp). When an unpaid bill is marked
+PAID through `PUT /api/bills/:billId`, the server records its current time in the
+same conditional database update as status/paidBy. The existing paid-bill lock
+prevents later edits, reopening, or duplicate requests from changing this date.
+Creation directly with `status: "PAID"` also records the server time; ordinary
+unpaid creation/updates keep `paidAt: null`. Client-supplied `paidAt` is ignored.
+This timestamp means **when payment was recorded**, not a user-entered historical
+payment date.
+
+Bill list/detail/create/update responses and dashboard bill records include this
+field. Existing paid bills without a timestamp return `paidAt: null`; no guessed
+backfill from updatedAt or dueDate is performed, and no migration is required.

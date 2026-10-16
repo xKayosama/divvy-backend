@@ -1,3 +1,4 @@
+const { presentBill, statusFilter } = require('./bill.reminders');
 const Bill = require('./Bill');
 const GroupMember = require('../groups/GroupMember');
 
@@ -108,6 +109,7 @@ const createBill = async (req, res) => {
       recurrence: recurring ? recurrence : null,
       paidBy: paidBy || null,
       status: status || 'PENDING',
+      paidAt: status === 'PAID' ? new Date() : null,
       notes: notes ? notes.trim() : ''
     });
 
@@ -121,7 +123,7 @@ const createBill = async (req, res) => {
       success: true,
       message: 'Bill created successfully.',
       data: {
-        bill
+        bill: presentBill(bill)
       }
     });
   } catch (error) {
@@ -180,9 +182,13 @@ const getGroupBills = async (req, res) => {
       filters.category = category.toUpperCase();
     }
 
-    // Status filter
-    if (status) {
-      filters.status = status.toUpperCase();
+    // Filter before pagination/counting using the same clock as serialization.
+    const now = new Date();
+    if (status !== undefined) {
+      if (typeof status !== 'string' || !['PENDING', 'OVERDUE', 'PAID'].includes(status.toUpperCase())) {
+        return res.status(400).json({ code: 400, success: false, message: 'Invalid bill status.' });
+      }
+      Object.assign(filters, statusFilter(status.toUpperCase(), now));
     }
 
     // Recurring filter
@@ -223,7 +229,7 @@ const getGroupBills = async (req, res) => {
       success: true,
       message: 'Bills retrieved successfully.',
       data: {
-        bills
+        bills: bills.map(bill => presentBill(bill, now))
       },
       pagination: {
         page: currentPage,
@@ -286,7 +292,7 @@ const getBillById = async (req, res) => {
       success: true,
       message: 'Bill retrieved successfully.',
       data: {
-        bill
+        bill: presentBill(bill)
       }
     });
   } catch (error) {
@@ -500,7 +506,10 @@ const updateBill = async (req, res) => {
         name: bill.name, amount: bill.amount, category: bill.category,
         dueDate: bill.dueDate, isRecurring: bill.isRecurring,
         recurrence: bill.recurrence, paidBy: bill.paidBy,
-        status: bill.status, notes: bill.notes
+        status: bill.status, notes: bill.notes,
+        // This is part of the same conditional write as the paid transition.
+        // Client-supplied paidAt is intentionally ignored.
+        paidAt: bill.status === 'PAID' ? new Date() : null
       } },
       { new: true, runValidators: true }
     );
@@ -518,7 +527,7 @@ const updateBill = async (req, res) => {
       success: true,
       message: 'Bill updated successfully.',
       data: {
-        bill: updatedBill
+        bill: presentBill(updatedBill)
       }
     });
   } catch (error) {

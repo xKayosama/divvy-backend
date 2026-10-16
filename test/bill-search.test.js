@@ -15,7 +15,8 @@ test('search combines name and notes matching with group filters and pagination'
     calls++;
     assert.equal(filter.groupId, 'g');
     assert.equal(filter.category, 'RENT');
-    assert.equal(filter.status, 'PENDING');
+    assert.deepEqual(filter.status, { $ne: 'PAID' });
+    assert.ok(filter.dueDate.$gte instanceof Date);
     assert.equal(filter.isRecurring, true);
     assert.deepEqual(filter.$or.map(item => Object.keys(item)[0]), ['name', 'notes']);
     for (const item of filter.$or) {

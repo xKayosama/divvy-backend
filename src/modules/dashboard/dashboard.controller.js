@@ -1,3 +1,4 @@
+const { presentBill, buildBillReminders, dayWindow } = require('../bills/bill.reminders');
 const { applySettlementPayments } = require('../settlements/settlement.balances');
 const Expense = require('../expenses/Expense');
 const Bill = require('../bills/Bill');
@@ -34,7 +35,7 @@ const getGroupDashboard = async (req, res) => {
       });
 
     // Get group bills
-    const bills = await Bill.find({
+    const rawBills = await Bill.find({
       groupId
     })
       .sort({
@@ -45,17 +46,21 @@ const getGroupDashboard = async (req, res) => {
         select: 'firstName lastName email avatar'
       });
 
+    const now = new Date();
+    const bills = rawBills.map(bill => presentBill(bill, now));
+    const billReminders = buildBillReminders(bills, now);
+
     // Recent 5 expenses
     const recentExpenses = expenses.slice(0, 5);
 
     // Upcoming 5 pending bills
-    const now = new Date();
+    const { today } = dayWindow(now);
 
     const upcomingBills = bills
       .filter(
         (bill) =>
           bill.status === 'PENDING' &&
-          new Date(bill.dueDate) >= now
+          new Date(bill.dueDate) >= today
       )
       .slice(0, 5);
 
@@ -172,7 +177,8 @@ const getGroupDashboard = async (req, res) => {
 
         recentExpenses,
 
-        upcomingBills
+        upcomingBills,
+        billReminders
       }
     });
   } catch (error) {

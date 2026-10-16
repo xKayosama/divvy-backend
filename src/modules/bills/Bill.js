@@ -62,6 +62,12 @@ const billSchema = new mongoose.Schema(
       default: null
     },
 
+    // Server time when payment was recorded; legacy paid bills remain unknown.
+    paidAt: {
+      type: Date,
+      default: null
+    },
+
     // Generated bills never act as recurrence sources.
     recurrenceSourceId: {
       type: mongoose.Schema.Types.ObjectId,
