@@ -144,7 +144,8 @@ const getGroupBills = async (req, res) => {
       limit = 10,
       category,
       status,
-      isRecurring
+      isRecurring,
+      search
     } = req.query;
 
     const currentPage = Math.max(Number(page), 1);
@@ -158,6 +159,21 @@ const getGroupBills = async (req, res) => {
     const filters = {
       groupId
     };
+
+    if (search !== undefined && (typeof search !== 'string' || search.trim().length > 200)) {
+      return res.status(400).json({
+        code: 400,
+        success: false,
+        message: 'search must be a string of at most 200 characters.'
+      });
+    }
+
+    if (search && search.trim()) {
+      const pattern = search.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      filters.$or = ['name', 'notes'].map(field => ({
+        [field]: { $regex: pattern, $options: 'i' }
+      }));
+    }
 
     // Category filter
     if (category) {

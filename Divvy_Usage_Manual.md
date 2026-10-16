@@ -302,13 +302,14 @@ Monthly and yearly scheduling uses UTC and clamps dates to the last valid day wh
 | Task | Request |
 | --- | --- |
 | List bills | `GET /api/groups/{{groupId}}/bills` |
+| Search bill names and notes | `GET /api/groups/{{groupId}}/bills?search=rent` |
 | Filter pending bills | `GET /api/groups/{{groupId}}/bills?status=PENDING&page=1&limit=20` |
 | Filter recurring sources | `GET /api/groups/{{groupId}}/bills?isRecurring=true` |
 | View one | `GET /api/bills/{{billId}}` |
 | Edit one | `PUT /api/bills/{{billId}}` |
 | Delete one | `DELETE /api/bills/{{billId}}` |
 
-Prefix these paths with `{{baseUrl}}`. Lists return `data.bills` and `pagination`; category filtering is also supported. Deleting a source stops future generation but retains existing generated bills. Deleting a completed generated occurrence does not normally recreate it. A generated occurrence cannot become a recurring source; create a new recurring bill if needed.
+Prefix these paths with `{{baseUrl}}`. Lists return `data.bills` and `pagination`; category filtering is also supported. Use `search` for case-insensitive literal matching in bill names or notes; combine it with any existing filter. Search text is trimmed and limited to 200 characters; blank search returns the unfiltered list. Deleting a source stops future generation but retains existing generated bills. Deleting a completed generated occurrence does not normally recreate it. A generated occurrence cannot become a recurring source; create a new recurring bill if needed.
 
 ## 9. Read balances and settlements
 
