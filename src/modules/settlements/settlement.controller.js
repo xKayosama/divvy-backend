@@ -1,160 +1,22 @@
 const mongoose = require('mongoose');
 const Settlement = require('./Settlement');
-const { applySettlementPayments } = require('../settlements/settlement.balances');
-const Expense = require('../expenses/Expense');
+const { getSettlementSnapshot } = require('./settlement.snapshot');
 const GroupMember = require('../groups/GroupMember');
 
 const getGroupSettlements = async (req, res) => {
   try {
-    const { id: groupId } = req.params;
-
-    // Get active group members
-    const memberships = await GroupMember.find({
-      groupId,
-      status: 'ACTIVE'
-    }).populate({
-      path: 'userId',
-      select: 'firstName lastName email avatar'
-    });
-
-    if (memberships.length === 0) {
-      return res.status(404).json({
-        success: false,
-        message: 'No active group members found.'
-      });
-    }
-
-    // Get group expenses
-    const expenses = await Expense.find({
-      groupId
-    });
-
-    // Calculate each member's paid and owed amounts
-    const balances = {};
-
-    memberships.forEach((membership) => {
-      const userId = membership.userId._id.toString();
-
-      balances[userId] = {
-        user: membership.userId,
-        paid: 0,
-        owed: 0,
-        net: 0
-      };
-    });
-
-    expenses.forEach((expense) => {
-      const payerId = (expense.paidBy._id || expense.paidBy).toString();
-
-      if (balances[payerId]) {
-        balances[payerId].paid += expense.amount;
-      }
-
-      expense.participants.forEach((participant) => {
-        const participantId = (participant.userId._id || participant.userId).toString();
-
-        if (balances[participantId]) {
-          balances[participantId].owed += participant.amount;
-        }
-      });
-    });
-
-    // Calculate net balances
-    const creditors = [];
-    const debtors = [];
-
-    await applySettlementPayments(groupId, Object.values(balances));
-
-    Object.values(balances).forEach((balance) => {
-      balance.paid = Number(balance.paid.toFixed(2));
-      balance.owed = Number(balance.owed.toFixed(2));
-
-
-
-      if (balance.net > 0) {
-        creditors.push({
-          user: balance.user,
-          amount: balance.net
-        });
-      }
-
-      if (balance.net < 0) {
-        debtors.push({
-          user: balance.user,
-          amount: Math.abs(balance.net)
-        });
-      }
-    });
-
-    // Calculate settlements
-    const settlements = [];
-
-    let debtorIndex = 0;
-    let creditorIndex = 0;
-
-    while (
-      debtorIndex < debtors.length &&
-      creditorIndex < creditors.length
-    ) {
-      const debtor = debtors[debtorIndex];
-      const creditor = creditors[creditorIndex];
-
-      const amount = Number(
-        Math.min(
-          debtor.amount,
-          creditor.amount
-        ).toFixed(2)
-      );
-
-      if (amount > 0) {
-        settlements.push({
-          from: debtor.user,
-          to: creditor.user,
-          amount
-        });
-      }
-
-      debtor.amount = Number(
-        (debtor.amount - amount).toFixed(2)
-      );
-
-      creditor.amount = Number(
-        (creditor.amount - amount).toFixed(2)
-      );
-
-      if (debtor.amount <= 0) {
-        debtorIndex++;
-      }
-
-      if (creditor.amount <= 0) {
-        creditorIndex++;
-      }
-    }
-
-    return res.status(200).json({
-      success: true,
-      message: 'Group settlements calculated successfully.',
-      data: {
-        settlements
-      }
-    });
+    const result = await getSettlementSnapshot(req.params.id);
+    if (!result.memberCount) return res.status(404).json({ success: false, message: 'No active group members found.' });
+    return res.status(200).json({ success: true, message: 'Group settlements calculated successfully.', data: { settlements: result.settlements } });
   } catch (error) {
-    console.error(
-      'Get group settlements error:',
-      error
-    );
-
-    return res.status(500).json({
-      success: false,
-      message:
-        'Something went wrong while calculating group settlements.'
-    });
+    console.error('Get group settlements error:', error);
+    return res.status(500).json({ success: false, message: 'Something went wrong while calculating group settlements.' });
   }
 };
 
 const recordSettlement = async (req, res) => {
   try {
-    const { to, amount, paidAt } = req.body;
+    const { to, amount, paidAt, requestId } = req.body;
     const from = req.user._id;
     if (!mongoose.isObjectIdOrHexString(to) || String(to) === String(from)) {
       return res.status(400).json({ success: false, message: 'Choose a different valid recipient.' });
@@ -171,16 +33,36 @@ const recordSettlement = async (req, res) => {
     if ((paidAt !== undefined && typeof paidAt !== 'string') || !Number.isFinite(date.getTime()) || date > new Date()) {
       return res.status(400).json({ success: false, message: 'Payment date must be valid and cannot be in the future.' });
     }
+    if (requestId !== undefined && (typeof requestId !== 'string' || !/^[a-zA-Z0-9_-]{8,128}$/.test(requestId))) {
+      return res.status(400).json({ success: false, message: 'Invalid payment request ID.' });
+    }
+    if (requestId) {
+      const previous = await Settlement.findOne({ groupId: req.params.id, from, requestId });
+      if (previous) {
+        if (String(previous.to) !== String(to) || previous.amount !== amount || (paidAt !== undefined && previous.paidAt.getTime() !== date.getTime())) return res.status(409).json({ success: false, message: 'This request already recorded a different payment.' });
+        return res.status(200).json({ success: true, message: 'Payment already recorded.', data: { settlement: previous } });
+      }
+    }
     const recipient = await GroupMember.findOne({ groupId: req.params.id, userId: to, status: 'ACTIVE' });
     if (!recipient) {
       return res.status(400).json({ success: false, message: 'Recipient must be an active group member.' });
     }
+    await Settlement.createIndexes(); // Fail closed if duplicate-payment indexes cannot be ensured.
+    const { settlements, snapshot } = await getSettlementSnapshot(req.params.id);
+    const outstanding = settlements.find(item => String(item.from._id) === String(from) && String(item.to._id) === String(to));
+    if (!outstanding || Math.round(amount * 100) > Math.round(outstanding.amount * 100)) {
+      return res.status(409).json({ success: false, message: 'This repayment is already settled or the amount exceeds the current outstanding balance. Reload payments.' });
+    }
     const settlement = await Settlement.create({
       groupId: req.params.id, from, to, amount: Math.round(scaled) / 100,
-      paidAt: date, recordedBy: from
+      paidAt: date, recordedBy: from,
+      ...(requestId ? { requestId } : {}), balanceClaim: `${snapshot}:${String(from)}:${String(to)}`
     });
     return res.status(201).json({ success: true, message: 'Settlement payment recorded.', data: { settlement } });
   } catch (error) {
+    if (error.code === 11000) {
+      return res.status(409).json({ success: false, message: 'This payment was already recorded or the balance changed. Reload payments before retrying.' });
+    }
     console.error('Record settlement error:', error);
     return res.status(500).json({ success: false, message: 'Something went wrong while recording the settlement.' });
   }

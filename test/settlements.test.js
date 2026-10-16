@@ -18,6 +18,10 @@ afterEach(() => mock.restoreAll());
 
 test('records sender payment, group, date and audit identity', async () => {
   mock.method(Member, 'findOne', async filter => { assert.deepEqual(filter, { groupId: 'g', userId: recipient, status: 'ACTIVE' }); return {}; });
+  mock.method(Settlement, 'createIndexes', async () => {});
+  mock.method(Member, 'find', () => query([sender, recipient].map(_id => ({ userId: { _id } }))));
+  mock.method(Expense, 'find', () => query([{ paidBy: recipient, amount: 600, participants: [{ userId: sender, amount: 300 }, { userId: recipient, amount: 300 }] }]));
+  mock.method(Settlement, 'find', () => query([]));
   mock.method(Settlement, 'create', async fields => fields);
   const res = response();
   await controller.recordSettlement(request({ to: recipient, amount: 300, paidAt: '2026-01-01' }), res);
@@ -114,4 +118,56 @@ test('settlement routes require authentication and active group access', async (
       else process.env.JWT_SECRET = secretBefore;
     }
   } finally { await new Promise(resolve => server.close(resolve)); }
+});
+
+function paymentFixture(alreadyPaid = 0) {
+  const payments = alreadyPaid ? [{ _id: 'old-payment', from: sender, to: recipient, amount: alreadyPaid }] : [];
+  mock.method(Member, 'findOne', async () => ({}));
+  mock.method(Member, 'find', () => query([sender, recipient].map(_id => ({ userId: { _id } }))));
+  mock.method(Expense, 'find', () => query([{ paidBy: recipient, amount: 600, participants: [{ userId: sender, amount: 300 }, { userId: recipient, amount: 300 }] }]));
+  mock.method(Settlement, 'find', () => query([...payments]));
+  mock.method(Settlement, 'createIndexes', async () => {});
+  mock.method(Settlement, 'findOne', async () => null);
+  return payments;
+}
+
+test('settled balances and payments exceeding the remainder cannot be recorded', async () => {
+  paymentFixture(300);
+  mock.method(Settlement, 'create', () => assert.fail('settled must not write'));
+  const settled = response(); await controller.recordSettlement(request({ to: recipient, amount: 1 }), settled);
+  assert.equal(settled.statusCode, 409);
+  paymentFixture(200);
+  const excessive = response(); await controller.recordSettlement(request({ to: recipient, amount: 100.01 }), excessive);
+  assert.equal(excessive.statusCode, 409);
+});
+
+test('partial payment permits only the unpaid remainder', async () => {
+  const payments = paymentFixture();
+  mock.method(Settlement, 'create', async fields => { const item = { _id: String(payments.length), ...fields }; payments.push(item); return item; });
+  for (const [amount, expected] of [[100, 201], [200, 201], [1, 409]]) {
+    const res = response(); await controller.recordSettlement(request({ to: recipient, amount }), res); assert.equal(res.statusCode, expected);
+  }
+  assert.equal(payments.length, 2);
+});
+
+test('same request ID replays the original payment and rejects changed details', async () => {
+  const previous = { groupId: 'g', from: sender, to: recipient, amount: 300, paidAt: new Date('2026-01-01'), requestId: 'payment_request_1' };
+  mock.method(Settlement, 'findOne', async filter => { assert.equal(filter.from, sender); assert.equal(filter.groupId, 'g'); assert.equal(filter.requestId, previous.requestId); return previous; });
+  mock.method(Settlement, 'create', () => assert.fail('must not create replay'));
+  for (const [amount, expected] of [[300, 200], [200, 409]]) {
+    const res = response(); await controller.recordSettlement(request({ to: recipient, amount, paidAt: '2026-01-01', requestId: previous.requestId }), res); assert.equal(res.statusCode, expected);
+  }
+});
+
+test('concurrent requests for the same balance claim create only one payment', async () => {
+  paymentFixture();
+  const claims = new Set();
+  mock.method(Settlement, 'create', async fields => {
+    if (claims.has(fields.balanceClaim)) throw Object.assign(new Error('Duplicate balance claim'), { code: 11000 });
+    claims.add(fields.balanceClaim); return fields;
+  });
+  const results = [response(), response()];
+  await Promise.all(results.map((res, index) => controller.recordSettlement(request({ to: recipient, amount: 300, paidAt: '2026-01-01', requestId: `parallel_request_${index}` }), res)));
+  assert.deepEqual(results.map(res => res.statusCode).sort(), [201, 409]);
+  assert.equal(claims.size, 1);
 });
