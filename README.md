@@ -290,3 +290,36 @@ payment date.
 Bill list/detail/create/update responses and dashboard bill records include this
 field. Existing paid bills without a timestamp return `paidAt: null`; no guessed
 backfill from updatedAt or dueDate is performed, and no migration is required.
+
+
+## Dashboard spending periods
+
+`GET /api/groups/:id/dashboard?period=this_month` accepts exactly `all_time`,
+`this_month`, or `last_month`. Omission defaults to `all_time`, preserving the
+existing totals. Invalid/blank/structured/repeated period values return 400.
+Authentication and ACTIVE group membership requirements are unchanged.
+
+Only `data.summary` (`totalExpenses`, `totalPaid`, `totalOwed`) and
+`data.recentExpenses` are selected by the expense's `date`, not createdAt or bill
+payment dates. Recent expenses remain the newest five by date/createdAt.
+UTC calendar months include their full last day, with an inclusive month start
+and exclusive next-month start. This month includes the entire current calendar
+month, including any future-dated expenses recorded within it.
+
+The additive `data.period` describes the selection:
+
+```json
+{
+  "value": "this_month",
+  "timeZone": "UTC",
+  "startDate": "2026-10-01",
+  "endDate": "2026-10-31"
+}
+```
+
+startDate/endDate are inclusive YYYY-MM-DD labels suitable for the Expenses
+endpoint. For all_time both are null. Member balances and recorded settlements
+always use all history. Bill totals, payment history, upcoming bills and reminder
+groups remain current and independent of the spending period, so selecting an
+older month does not hide unpaid debt or overdue bills. No schema change or data
+migration is required.

@@ -1,3 +1,4 @@
+const { resolveDashboardPeriod } = require('./dashboard.period');
 const { presentBill, buildBillReminders, dayWindow } = require('../bills/bill.reminders');
 const { applySettlementPayments } = require('../settlements/settlement.balances');
 const Expense = require('../expenses/Expense');
@@ -7,6 +8,14 @@ const GroupMember = require('../groups/GroupMember');
 const getGroupDashboard = async (req, res) => {
   try {
     const { id: groupId } = req.params;
+    const now = new Date();
+    let selection;
+    try {
+      selection = resolveDashboardPeriod(req.query?.period, now);
+    } catch (error) {
+      return res.status(400).json({ code: 400, success: false, message: error.message });
+    }
+    const { period, start, end } = selection;
 
     // Get active group members
     const members = await GroupMember.find({
@@ -46,12 +55,18 @@ const getGroupDashboard = async (req, res) => {
         select: 'firstName lastName email avatar'
       });
 
-    const now = new Date();
     const bills = rawBills.map(bill => presentBill(bill, now));
     const billReminders = buildBillReminders(bills, now);
 
-    // Recent 5 expenses
-    const recentExpenses = expenses.slice(0, 5);
+    // Keep all expense history for live balances; period selection affects
+    // only spending summaries and recent expense previews.
+    const periodExpenses = start
+      ? expenses.filter(expense => {
+        const date = new Date(expense.date);
+        return date >= start && date < end;
+      })
+      : expenses;
+    const recentExpenses = periodExpenses.slice(0, 5);
 
     // Upcoming 5 pending bills
     const { today } = dayWindow(now);
@@ -103,17 +118,17 @@ const getGroupDashboard = async (req, res) => {
     await applySettlementPayments(groupId, balances);
 
     // Calculate totals
-    const totalExpenses = expenses.reduce(
+    const totalExpenses = periodExpenses.reduce(
       (total, expense) => total + expense.amount,
       0
     );
 
-    const totalPaid = expenses.reduce(
+    const totalPaid = periodExpenses.reduce(
       (total, expense) => total + expense.amount,
       0
     );
 
-    const totalOwed = expenses.reduce(
+    const totalOwed = periodExpenses.reduce(
       (total, expense) =>
         total +
         expense.participants.reduce(
@@ -157,6 +172,7 @@ const getGroupDashboard = async (req, res) => {
       success: true,
       message: 'Group dashboard retrieved successfully.',
       data: {
+        period,
         summary: {
           totalExpenses,
           totalPaid,
