@@ -167,7 +167,7 @@ If an amount looks wrong, check the expense list for duplicates, an incorrect pa
 
 For the grocery example, the suggestion is **Ben → Ana: PHP 750**.
 
-Divvy currently calculates suggestions only. It does not transfer money, record completed settlements, or clear balances after an external transfer. A suggestion can therefore remain visible after you have paid. Confirm previous payments before paying again. Do not enter a reimbursement as another shared purchase to clear the balance.
+Divvy does not transfer money. The backend supports recording payments you sent and reviewing payment history. Once a payment is recorded, balances and suggestions update. The HTML preview is still a mockup; until the app provides payment recording, use the settlement API described in the Usage Manual. Record each transfer once and do not enter a reimbursement as another shared purchase.
 
 ## 10. Review Home regularly
 
@@ -203,7 +203,7 @@ If the app reports a logout failure, retry when connected. If it reports that yo
 | Receipt upload is rejected                  | Use a supported file at or below 10 MB                                                              |
 | Receipt scanning is temporarily unavailable | Wait a minute and retry, or enter the expense manually                                              |
 | A paid bill does not affect balances        | Record its shared expense once if it should be split                                                |
-| A payment suggestion remains after I paid   | Keep your payment record; completed settlements are not yet recorded in Divvy                       |
+| A payment suggestion remains after I paid   | Record your payment through the settlement API and check the group and recipient                       |
 | A save did not clearly finish               | Reopen the relevant list and check before submitting again                                          |
 | Buttons say preview or demo                 | You are using the design mockup; changes are not saved to the backend                               |
 
@@ -213,6 +213,6 @@ Ana and Ben share an apartment group using PHP. Ana buys PHP 1,500 of groceries,
 
 Their PHP 1,800 internet bill is still Pending. When Ana pays it, she marks the bill Paid by Ana and records one separate internet expense split equally with Ben. Ana's total net becomes +PHP 1,650, and Ben's becomes −PHP 1,650.
 
-Settle suggests that Ben pay Ana PHP 1,650. Ben transfers the money outside Divvy, and they keep the payment confirmation separately. The current app backend will continue to show the calculated suggestion because completed settlements are not yet saved.
+Settle suggests that Ben pay Ana PHP 1,650. Ben transfers the money outside Divvy, and they keep the payment confirmation separately. Ben records the payment through the settlement API, which clears the remaining suggestion.
 
 For installation and API operation, see the [Divvy Usage Manual](Divvy_Usage_Manual.md).

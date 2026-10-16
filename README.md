@@ -225,3 +225,12 @@ and a disconnected client cancels its OCR subprocess.
 
 Implementation references: [Tesseract.js](https://github.com/naptha/tesseract.js)
 and [local language loading](https://github.com/naptha/tesseract.js/blob/master/docs/local-installation.md).
+
+### Settlement payments
+
+`GET /api/groups/:id/settlements` returns payment suggestions. Record an external
+payment with `POST /api/groups/:id/settlements` using `{ "to": "USER_ID", "amount": 300 }`
+and optional `paidAt`. The authenticated member is the sender. Both parties must
+be active group members. `GET /api/groups/:id/settlements/history?page=1&limit=20`
+returns payment history. Recorded payments adjust net balances and dashboard
+balances without changing expense totals. See the Usage Manual for limitations.

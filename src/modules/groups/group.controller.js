@@ -1,3 +1,4 @@
+const Settlement = require('../settlements/Settlement');
 const User = require("../users/User");
 const Group = require("./Group");
 const GroupMember = require("./GroupMember");
@@ -405,6 +406,9 @@ const deleteGroup = async (req, res) => {
     await Expense.deleteMany({
       groupId,
     });
+
+    // Remove recorded settlement payments
+    await Settlement.deleteMany({ groupId });
 
     // Remove group bills
     await Bill.deleteMany({

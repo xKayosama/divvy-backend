@@ -14,7 +14,7 @@ Use Divvy to organize shared expenses, track bills, and calculate who owes whom.
 6. Check balances and suggested settlements.
 7. Log out when finished.
 
-An **expense** records money paid and how the cost is shared. A **bill** tracks an obligation and its status. Only expenses affect balances. A **settlement suggestion** describes a payment between members; it does not send money or save a completed payment.
+An **expense** records money paid and how the cost is shared. A **bill** tracks an obligation and its status. Expenses and recorded settlement payments affect balances. A **settlement suggestion** describes a payment between members; it does not send money. Record completed payments separately through the settlement API.
 
 ## 2. Install and start the backend
 
@@ -318,7 +318,7 @@ Send `GET {{baseUrl}}/api/groups/{{groupId}}/balances`.
 | --- | --- |
 | `paid` | Total the member paid for recorded expenses |
 | `owed` | Total of the member's assigned expense shares |
-| `net` | `paid - owed`; positive means receive money, negative means owe money |
+| `net` | `paid - owed + settlementPaid - settlementReceived`; positive means receive money, negative means owe money |
 
 If the PHP 1,500 equal-split grocery expense is the only expense:
 
@@ -329,7 +329,26 @@ If the PHP 1,500 equal-split grocery expense is the only expense:
 
 Send `GET {{baseUrl}}/api/groups/{{groupId}}/settlements`. The suggested payment is Ben → Ana for PHP 750, returned under `data.settlements` with `from`, `to`, and `amount`.
 
-Arrange the actual transfer outside Divvy. The current backend has no endpoint to record a completed settlement or subtract it from balances, so the suggestion remains after an external payment. Keep a separate payment record; do not record reimbursement as another shared purchase, because that changes the expense history rather than recording settlement.
+Arrange the actual transfer outside Divvy, then record it as the logged-in sender:
+
+```http
+POST {{baseUrl}}/api/groups/{{groupId}}/settlements
+Content-Type: application/json
+
+{
+  "to": "RECIPIENT_USER_ID",
+  "amount": 300,
+  "paidAt": "2026-01-01T10:00:00.000Z"
+}
+```
+
+`paidAt` is optional and defaults to now; future dates are rejected. The recipient must be another active group member. Amounts must be positive numbers with at most two decimal places. `from` and `recordedBy` are set to the authenticated sender; you cannot record someone else's payment.
+
+After Ben records PHP 300 paid to Ana, the remaining suggestion is PHP 450. Recording the remaining PHP 450 clears their balances. Expense totals stay unchanged; member responses include `settlementPaid` and `settlementReceived`, and dashboard net balances also include these payments.
+
+Retrieve recorded payments using `GET {{baseUrl}}/api/groups/{{groupId}}/settlements/history?page=1&limit=20`. History returns `data.settlements` and `pagination`, sorted by payment date, newest first. The maximum limit is 100. All settlement routes require authentication and active group membership.
+
+These are self-reported payments, without recipient confirmation or payment-provider verification. Record each transfer once: duplicate submissions create separate records. Payments are not capped to the current suggestion; overpayments reverse the remaining balance. Editing or deleting payment records is not available in this version. Do not enter reimbursements as shared purchases.
 
 ## 10. Review the dashboard
 
@@ -362,7 +381,7 @@ To permanently delete a group, its owner sends `DELETE {{baseUrl}}/api/groups/{{
 | 504 scan timeout | Retry with a clearer or smaller receipt, or enter it manually |
 | 500 server error | Review backend logs and database connectivity; some invalid model values also produce 500, so check category and status spelling |
 | Paid bill missing from balances | Create its shared expense once; bills and expenses are separate |
-| Settlement remains after payment | Completed settlements are not persisted in the current backend |
+| Settlement remains after payment | Record the completed payment through the settlement API; verify the correct group and recipient |
 | Unexpected balances after removing a member | Calculations include only active members; review historical obligations before removal |
 
 For a failed create request with an uncertain outcome, check the relevant list before resubmitting to avoid duplicates.
@@ -375,6 +394,6 @@ For a failed create request with an uncertain outcome, check the relevant list b
 - A test expense shows the expected payer, shares, and balances.
 - Receipt values are reviewed before creating any expense.
 - Bill status changes and shared expenses are recorded separately as needed.
-- Settlement suggestions are understood as calculations, with external payments tracked separately.
+- External payments are recorded once through the settlement API and reflected in suggestions.
 
 For architecture and maintenance, see [Divvy_Backend_Developer_Guide.md](Divvy_Backend_Developer_Guide.md). For migration details and operational notes, see [README.md](README.md).

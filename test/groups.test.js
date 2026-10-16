@@ -49,7 +49,7 @@ test('Group create, list, read, update, delete preserve owner membership and cas
   request = req(); request.body = { name: ' Event ', currency: ' usd ' }; res = response(); await groups.updateGroup(request, res); assert.equal(record.name, 'Event'); assert.equal(record.currency, 'USD');
   request.user._id = 'b'; res = response(); await groups.updateGroup(request, res); assert.equal(res.statusCode, 403);
   mock.method(Group, 'findByIdAndDelete', async id => assert.equal(id, 'g'));
-  for (const Model of [Member, Expense, Bill]) mock.method(Model, 'deleteMany', async filter => assert.deepEqual(filter, { groupId: 'g' }));
+  for (const Model of [Member, Expense, Bill, require('../src/modules/settlements/Settlement')]) mock.method(Model, 'deleteMany', async filter => assert.deepEqual(filter, { groupId: 'g' }));
   res = response(); await groups.deleteGroup(req(), res); assert.equal(res.statusCode, 200);
 });
 
@@ -162,6 +162,7 @@ test('expense resource read, update and delete authorize using groupId', async (
   for (const action of [expenses.getExpenseById, expenses.updateExpense, expenses.deleteExpense]) { const res = response(); await action(request, res); assert.equal(res.statusCode, 403); }
 });
 test('balance, settlements and dashboard retain totals and Group filters', async () => {
+  mock.method(require('../src/modules/settlements/Settlement'), 'find', async filter => { assert.equal(filter.groupId, 'g'); return []; });
   const users = [{ _id: 'a' }, { _id: 'b' }];
   mock.method(Member, 'find', filter => { assert.equal(filter.groupId, 'g'); return query(users.map(userId => ({ userId }))); });
   const raw = { amount: 10, paidBy: 'a', participants: [{ userId: 'a', amount: 5 }, { userId: 'b', amount: 5 }] };

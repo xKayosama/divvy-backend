@@ -1,3 +1,4 @@
+const { applySettlementPayments } = require('../settlements/settlement.balances');
 const Expense = require('../expenses/Expense');
 const GroupMember = require('../groups/GroupMember');
 
@@ -42,7 +43,7 @@ const getGroupBalances = async (req, res) => {
 
     // Calculate paid and owed amounts
     expenses.forEach((expense) => {
-      const payerId = expense.paidBy.toString();
+      const payerId = (expense.paidBy._id || expense.paidBy).toString();
 
       // Amount paid by the person
       if (balances[payerId]) {
@@ -51,7 +52,7 @@ const getGroupBalances = async (req, res) => {
 
       // Amount owed by each participant
       expense.participants.forEach((participant) => {
-        const participantId = participant.userId.toString();
+        const participantId = (participant.userId._id || participant.userId).toString();
 
         if (balances[participantId]) {
           balances[participantId].owed += participant.amount;
@@ -68,6 +69,8 @@ const getGroupBalances = async (req, res) => {
         (balance.paid - balance.owed).toFixed(2)
       );
     });
+
+    await applySettlementPayments(groupId, Object.values(balances));
 
     // Calculate group totals
     const totalExpenses = expenses.reduce(

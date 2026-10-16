@@ -1,3 +1,4 @@
+const { applySettlementPayments } = require('../settlements/settlement.balances');
 const Expense = require('../expenses/Expense');
 const Bill = require('../bills/Bill');
 const GroupMember = require('../groups/GroupMember');
@@ -93,6 +94,8 @@ const getGroupDashboard = async (req, res) => {
     balances.forEach((balance) => {
       balance.net = balance.paid - balance.owed;
     });
+
+    await applySettlementPayments(groupId, balances);
 
     // Calculate totals
     const totalExpenses = expenses.reduce(
