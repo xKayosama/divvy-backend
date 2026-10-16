@@ -323,3 +323,26 @@ always use all history. Bill totals, payment history, upcoming bills and reminde
 groups remain current and independent of the spending period, so selecting an
 older month does not hide unpaid debt or overdue bills. No schema change or data
 migration is required.
+
+
+## Dashboard category breakdown
+
+`GET /api/groups/:id/dashboard` now adds `data.spendingByCategory`, using the
+same group and selected UTC spending period as `data.summary`. Each entry is:
+
+```json
+{ "category": "GROCERIES", "amount": 1500, "count": 3, "percentage": 60 }
+```
+
+Amounts use the group's currency. Each expense contributes its full amount once,
+regardless of split type/number of participants. Amounts accumulate in integer
+cents; their sum agrees with summary.totalExpenses and summary.totalPaid. Count
+is the number of expenses, and percentage is its share of total period spending,
+rounded independently to two decimals (percentages may sum to 99.99 or 100.01).
+Entries sort by amount descending, then category alphabetically for ties. Only
+categories with recorded expenses appear; an empty period returns `[]`.
+Missing/unrecognized legacy categories are grouped under OTHERS; known legacy
+category casing/whitespace is normalized for the response without editing data.
+Bills and settlements never contribute to this breakdown. Current balances,
+bill summaries and reminders retain their existing behavior. No migration,
+new endpoint, or dependency is required.

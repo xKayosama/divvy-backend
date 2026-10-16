@@ -1,3 +1,4 @@
+const { buildCategoryBreakdown } = require('./dashboard.categories');
 const { resolveDashboardPeriod } = require('./dashboard.period');
 const { presentBill, buildBillReminders, dayWindow } = require('../bills/bill.reminders');
 const { applySettlementPayments } = require('../settlements/settlement.balances');
@@ -117,16 +118,9 @@ const getGroupDashboard = async (req, res) => {
 
     await applySettlementPayments(groupId, balances);
 
-    // Calculate totals
-    const totalExpenses = periodExpenses.reduce(
-      (total, expense) => total + expense.amount,
-      0
-    );
-
-    const totalPaid = periodExpenses.reduce(
-      (total, expense) => total + expense.amount,
-      0
-    );
+    // Use the same cents totals for the spending card and category breakdown.
+    const { totalAmount: totalExpenses, spendingByCategory } = buildCategoryBreakdown(periodExpenses);
+    const totalPaid = totalExpenses;
 
     const totalOwed = periodExpenses.reduce(
       (total, expense) =>
@@ -173,6 +167,7 @@ const getGroupDashboard = async (req, res) => {
       message: 'Group dashboard retrieved successfully.',
       data: {
         period,
+        spendingByCategory,
         summary: {
           totalExpenses,
           totalPaid,
