@@ -418,7 +418,8 @@ const getGroupExpenses = async (req, res) => {
       limit = 10,
       category,
       startDate,
-      endDate
+      endDate,
+      search
     } = req.query;
 
     const currentPage = Math.max(
@@ -439,9 +440,25 @@ const getGroupExpenses = async (req, res) => {
     // Build filters
     // -----------------------------
 
-    const filters = {
-      groupId
-    };
+    const filters = { groupId };
+
+    if (search !== undefined) {
+      if (typeof search !== 'string' || search.trim().length > 200) {
+        return res.status(400).json({
+          success: false,
+          code: 400,
+          message: 'Search must be a string of at most 200 characters.'
+        });
+      }
+
+      const term = search.trim();
+      if (term) {
+        filters.description = {
+          $regex: term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'),
+          $options: 'i'
+        };
+      }
+    }
 
     // -----------------------------
     // Category filter
