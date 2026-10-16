@@ -325,6 +325,14 @@ const updateBill = async (req, res) => {
       });
     }
 
+    if (bill.status === 'PAID') {
+      return res.status(409).json({
+        code: 409,
+        success: false,
+        message: 'Paid bills cannot be edited or deleted.'
+      });
+    }
+
     if (bill.recurrenceSourceId && isRecurring === true) {
       return res.status(400).json({
         code: 400,
@@ -469,9 +477,22 @@ const updateBill = async (req, res) => {
     bill.status = updatedStatus;
     bill.notes = updatedNotes;
 
-    await bill.save();
+    // The condition also prevents a concurrent payment from being overwritten.
+    const updatedBill = await Bill.findOneAndUpdate(
+      { _id: billId, status: { $ne: 'PAID' } },
+      { $set: {
+        name: bill.name, amount: bill.amount, category: bill.category,
+        dueDate: bill.dueDate, isRecurring: bill.isRecurring,
+        recurrence: bill.recurrence, paidBy: bill.paidBy,
+        status: bill.status, notes: bill.notes
+      } },
+      { new: true, runValidators: true }
+    );
+    if (!updatedBill) {
+      return res.status(409).json({ code: 409, success: false, message: 'Bill was paid or removed. Reload the bill list.' });
+    }
 
-    await bill.populate({
+    await updatedBill.populate({
       path: 'paidBy',
       select: 'firstName lastName email avatar'
     });
@@ -481,7 +502,7 @@ const updateBill = async (req, res) => {
       success: true,
       message: 'Bill updated successfully.',
       data: {
-        bill
+        bill: updatedBill
       }
     });
   } catch (error) {
@@ -524,7 +545,18 @@ const deleteBill = async (req, res) => {
       });
     }
 
-    await Bill.findByIdAndDelete(billId);
+    if (bill.status === 'PAID') {
+      return res.status(409).json({
+        code: 409,
+        success: false,
+        message: 'Paid bills cannot be edited or deleted.'
+      });
+    }
+
+    const deletedBill = await Bill.findOneAndDelete({ _id: billId, status: { $ne: 'PAID' } });
+    if (!deletedBill) {
+      return res.status(409).json({ code: 409, success: false, message: 'Bill was paid or removed. Reload the bill list.' });
+    }
 
     return res.status(200).json({
       code:200,

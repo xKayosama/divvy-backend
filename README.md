@@ -1,5 +1,8 @@
 # group-expense-tracker-backend
 
+For setup and step-by-step API workflows, see the [Divvy Usage Manual](Divvy_Usage_Manual.md).
+For everyday use of the planned mobile app, see the [Divvy App User Guide](Divvy_App_User_Guide.md).
+
 Express API backed by MongoDB/Mongoose. Authentication uses JWTs returned by
 `POST /api/auth/login`, sent as `Authorization: Bearer <token>` on protected routes.
 Tokens expire after `JWT_EXPIRES_IN` (default: `7d`).

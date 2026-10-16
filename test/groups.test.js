@@ -179,7 +179,7 @@ test('recurring bill CRUD uses groupId and membership authorization', async () =
   mock.method(Bill, 'create', async fields => (record = { ...fields, save: async () => {}, populate: async () => {} }));
   const request = req(); request.body = { name: 'Rent', amount: 20, dueDate: '2099-01-01', isRecurring: true, recurrence: 'MONTHLY', paidBy: 'a' };
   let res = response(); await bills.createBill(request, res); assert.equal(res.statusCode, 201); assert.equal(record.groupId, 'g');
-  mock.method(Bill, 'findById', () => query(record)); mock.method(Bill, 'findByIdAndDelete', async () => {});
+  mock.method(Bill, 'findById', () => query(record)); mock.method(Bill, 'findOneAndUpdate', async () => record); mock.method(Bill, 'findOneAndDelete', async () => record);
   request.params.billId = 'b'; request.body = {};
   for (const action of [bills.getBillById, bills.updateBill, bills.deleteBill]) { res = response(); await action(request, res); assert.equal(res.statusCode, 200); }
   mock.method(Member, 'findOne', async () => null); res = response(); await bills.getBillById(request, res); assert.equal(res.statusCode, 403);
