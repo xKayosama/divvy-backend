@@ -5,7 +5,14 @@ const RevokedToken = require('./RevokedToken');
 
 const register = async (req, res) => {
   try {
-    const { firstName, lastName, email, password } = req.body;
+    const { firstName, lastName, email, password } = req.body || {};
+
+    if (![firstName, lastName, email, password].every(value => typeof value === 'string') ||
+        !firstName.trim() || !lastName.trim() || firstName.length > 100 || lastName.length > 100 ||
+        email.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim()) ||
+        password.length < 8 || Buffer.byteLength(password, 'utf8') > 72) {
+      return res.status(400).json({ success: false, message: 'Provide valid names and email, and a password of at least 8 characters and at most 72 UTF-8 bytes.' });
+    }
 
     if (!firstName || !lastName || !email || !password) {
       return res.status(400).json({
@@ -15,7 +22,7 @@ const register = async (req, res) => {
     }
 
     const existingUser = await User.findOne({
-      email: email.toLowerCase()
+      email: email.trim().toLowerCase()
     });
 
     if (existingUser) {
@@ -30,7 +37,7 @@ const register = async (req, res) => {
     const user = await User.create({
       firstName,
       lastName,
-      email: email.toLowerCase(),
+      email: email.trim().toLowerCase(),
       password: hashedPassword
     });
 
@@ -47,6 +54,9 @@ const register = async (req, res) => {
       }
     });
   } catch (error) {
+    if (error.code === 11000) {
+      return res.status(409).json({ success: false, message: 'An account with this email already exists.' });
+    }
     console.error('Register error:', error);
 
     return res.status(500).json({
@@ -58,7 +68,12 @@ const register = async (req, res) => {
 
 const login = async (req, res) => {
   try {
-    const { email, password } = req.body;
+    const { email, password } = req.body || {};
+
+    if (typeof email !== 'string' || typeof password !== 'string' ||
+        !email.trim() || email.length > 254 || !password || Buffer.byteLength(password, 'utf8') > 72) {
+      return res.status(400).json({ success: false, message: 'Provide a valid email and password.' });
+    }
 
     // Validate fields
     if (!email || !password) {
@@ -70,7 +85,7 @@ const login = async (req, res) => {
 
     // Find user
     const user = await User.findOne({
-      email: email.toLowerCase()
+      email: email.trim().toLowerCase()
     });
 
     if (!user) {

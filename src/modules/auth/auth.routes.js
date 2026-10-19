@@ -3,11 +3,12 @@ const express = require('express');
 const { register, login, logout, getMe } = require('./auth.controller');
 
 const { protect } = require('./auth.middleware');
+const { loginLimit, registrationLimit } = require('./auth.rate-limit');
 
 const router = express.Router();
 
-router.post('/register', register);
-router.post('/login', login);
+router.post('/register', registrationLimit, register);
+router.post('/login', loginLimit, login);
 router.post('/logout', protect, logout);
 router.get('/me', protect, getMe);
 

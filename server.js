@@ -7,19 +7,48 @@ const connectDatabase = require('./src/config/database');
 
 const { startRecurringBillWorker } = require('./src/modules/bills/bill.recurrence');
 
-const PORT = process.env.PORT || 5000;
+const mongoose = require('mongoose');
+const { validateEnvironment } = require('./src/config/environment');
 
 const startServer = async () => {
+  const { port } = validateEnvironment();
   await connectDatabase();
 
-  await startRecurringBillWorker();
+  const stopWorker = await startRecurringBillWorker();
 
-  app.listen(PORT, () => {
-    console.log(`Server running on port ${PORT}`);
+  const server = app.listen(port);
+  server.once('listening', () => {
+    console.log(`Server running on port ${port}`);
   });
+  server.on('error', error => {
+    console.error('HTTP server failed:', error.code === 'EADDRINUSE'
+      ? `Port ${port} is already in use. Stop the existing server or choose a different PORT.`
+      : error.code || error.name);
+    process.exit(1);
+  });
+  let shuttingDown = false;
+  const shutdown = () => {
+    if (shuttingDown) return;
+    shuttingDown = true;
+    app.locals.shuttingDown = true;
+    stopWorker();
+    const deadline = setTimeout(() => process.exit(1), 10000);
+    deadline.unref();
+    server.close(async () => {
+      try {
+        await mongoose.disconnect();
+        clearTimeout(deadline);
+        process.exit(0);
+      } catch {
+        process.exit(1);
+      }
+    });
+  };
+  process.once('SIGTERM', shutdown);
+  process.once('SIGINT', shutdown);
 };
 
 startServer().catch(error => {
-  console.error('Server startup failed:', error);
+  console.error('Server startup failed:', error.message);
   process.exit(1);
 });
