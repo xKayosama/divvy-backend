@@ -8,7 +8,7 @@ const response = () => ({ statusCode: 200, status(code) { this.statusCode = code
 async function search(query, check) {
   const chain = {
     populate() { return this; },
-    sort(value) { assert.deepEqual(value, { date: -1, createdAt: -1 }); return this; },
+    sort(value) { assert.deepEqual(value, { date: -1, createdAt: -1, _id: -1 }); return this; },
     skip(value) { assert.equal(value, query.page === '2' ? 5 : 0); return this; },
     limit() { return Promise.resolve([]); }
   };

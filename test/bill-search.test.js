@@ -5,7 +5,7 @@ const { getGroupBills } = require('../src/modules/bills/bill.controller');
 afterEach(() => mock.restoreAll());
 const response = () => ({ statusCode: 200, status(code) { this.statusCode = code; return this; }, json(body) { this.body = body; return this; } });
 function stubList(check) {
-  const chain = { populate() { return this; }, sort(value) { assert.deepEqual(value, { dueDate: 1, createdAt: -1 }); return this; }, skip(value) { assert.equal(value, 5); return this; }, limit(value) { assert.equal(value, 5); return Promise.resolve([]); } };
+  const chain = { populate() { return this; }, sort(value) { assert.deepEqual(value, { dueDate: 1, createdAt: -1, _id: -1 }); return this; }, skip(value) { assert.equal(value, 5); return this; }, limit(value) { assert.equal(value, 5); return Promise.resolve([]); } };
   mock.method(Bill, 'find', filter => { check(filter); return chain; });
   mock.method(Bill, 'countDocuments', async filter => { check(filter); return 7; });
 }
