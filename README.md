@@ -148,6 +148,33 @@ catches up. Paying the source does not disable recurrence. In-flight generation
 can complete while an edit/deletion is happening; changes apply on the next worker
 refresh. Generation requires the backend to be running; startup recovers downtime.
 
+## Deployment
+
+See [DEPLOYMENT.md](DEPLOYMENT.md) for the Docker image, single-host Compose setup,
+production environment template, staging checks and remaining hosting decisions.
+
+## Startup and deployment readiness
+
+Set `MONGO_URI` to a MongoDB URI and `JWT_SECRET` to a securely generated secret
+containing at least 32 UTF-8 bytes. Startup rejects missing or invalid settings.
+`PORT` defaults to 5000; `JWT_EXPIRES_IN` defaults to `7d` and must be a positive
+duration. Set `NODE_ENV=production` on the host. Never commit environment secrets.
+
+Use `/api/health` for process liveness and `/api/ready` for database readiness.
+Readiness returns 503 when MongoDB is disconnected, its bounded ping fails, or
+shutdown has begun. SIGTERM/SIGINT stops new connections and the recurring bill
+timer, drains HTTP requests, and disconnects MongoDB, with a 10-second deadline.
+
+Registration requires nonblank names (maximum 100 characters each), a valid email
+(maximum 254 characters), and a password of at least 8 characters and at most 72
+UTF-8 bytes. Login continues to accept existing shorter passwords.
+Authentication limits are per IP per process over 15 minutes: 20 unsuccessful
+login attempts or 5 registration requests. Excess requests return JSON 429 with
+Retry-After. Proxy trust is disabled by default; configure only the actual trusted
+proxy topology before deploying behind a reverse proxy, otherwise users may share
+the proxy's quota. Use a shared rate-limit store or gateway limits before scaling
+to multiple instances; memory counters reset on restart.
+
 ## Receipt upload and scanning
 
 Scanning now uses local Tesseract.js OCR and an English receipt-text parser.

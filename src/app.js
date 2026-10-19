@@ -1,5 +1,6 @@
 const express = require('express');
 const cors = require('cors');
+const mongoose = require('mongoose');
 
 const authRoutes = require('./modules/auth/auth.routes');
 const groupRoutes = require('./modules/groups/group.routes');
@@ -20,6 +21,17 @@ app.get('/api/health', (req, res) => {
     success: true,
     message: 'Divvy API is running'
   });
+});
+
+app.get('/api/ready', async (req, res) => {
+  try {
+    if (req.app.locals.shuttingDown || mongoose.connection.readyState !== 1) throw new Error('Unavailable');
+    await mongoose.connection.db.admin().ping({ timeoutMS: 2000 });
+    if (req.app.locals.shuttingDown) throw new Error('Unavailable');
+    res.status(200).json({ success: true, message: 'Divvy API is ready' });
+  } catch {
+    res.status(503).json({ success: false, message: 'Divvy API is not ready' });
+  }
 });
 
 app.use('/api/auth', authRoutes);

@@ -1,0 +1,29 @@
+services:
+  api:
+    build: .
+    image: divvy-backend:local
+    init: true
+    env_file:
+      - .env.production
+    environment:
+      NODE_ENV: production
+      PORT: "5000"
+      PDFTOPPM_PATH: /usr/bin/pdftoppm
+    ports:
+      - "127.0.0.1:5002:5000"
+    restart: unless-stopped
+    stop_grace_period: 15s
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=256m,mode=1777
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 3g
+    cpus: 2
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
