@@ -148,7 +148,7 @@ test('expense validation rejects duplicates, inactive payer/participants and une
 });
 test('expense pagination, category, inclusive date range and sort remain scoped to group', async () => {
   const request = req(); request.query = { page: '2', limit: '5', category: 'food', startDate: '2026-09-01', endDate: '2026-09-02' };
-  const chain = query([]); chain.sort = sort => { assert.deepEqual(sort, { date: -1, createdAt: -1 }); return chain; }; chain.skip = skip => { assert.equal(skip, 5); return chain; }; chain.limit = limit => { assert.equal(limit, 5); return chain; };
+  const chain = query([]); chain.sort = sort => { assert.deepEqual(sort, { date: -1, createdAt: -1, _id: -1 }); return chain; }; chain.skip = skip => { assert.equal(skip, 5); return chain; }; chain.limit = limit => { assert.equal(limit, 5); return chain; };
   const check = filter => { assert.equal(filter.groupId, 'g'); assert.equal(filter.category, 'FOOD'); assert.equal(filter.date.$lt.toISOString(), '2026-09-03T00:00:00.000Z'); };
   mock.method(Expense, 'find', filter => { check(filter); return chain; }); mock.method(Expense, 'countDocuments', async filter => { check(filter); return 11; });
   const res = response(); await expenses.getGroupExpenses(request, res); assert.equal(res.body.pagination.totalPages, 3); assert.equal(res.body.pagination.hasNextPage, true);

@@ -382,3 +382,20 @@ within that month, consistent with existing period totals. `current.isInProgress
 is true for this_month so the UI can communicate that distinction. All-time has
 no meaningful prior calendar month. No new endpoint, migration or dependency is
 needed; existing query validation and group authorization still apply.
+
+### Expense and bill list sorting
+
+Both group list endpoints accept a single `sort` query parameter, applied before
+pagination and combined with existing search/filters. Sort does not change counts.
+
+- `GET /api/groups/:id/expenses`: `newest` (default), `oldest`,
+  `amount_high`, `amount_low`. Newest/oldest use expense date, then creation
+  time and ID in the same direction. Amount ties use newest expense first.
+- `GET /api/groups/:id/bills`: `due_soonest` (default), `due_latest`,
+  `amount_high`, `amount_low`. Due-date ties use creation time and ID descending.
+  Amount ties use nearest due date, then creation time and ID descending.
+
+Values are exact, case-sensitive strings. Blank, unknown, repeated or structured
+values return HTTP 400. Omission preserves the existing primary/default order.
+Unique ID tie-breakers keep records with equal dates/amounts consistently ordered.
+Authentication and active membership requirements are unchanged.

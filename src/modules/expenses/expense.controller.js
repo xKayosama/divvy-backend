@@ -419,8 +419,20 @@ const getGroupExpenses = async (req, res) => {
       category,
       startDate,
       endDate,
-      search
+      search,
+      sort = 'newest'
     } = req.query;
+
+    // Include a unique tie-breaker for deterministic pagination.
+    const sortOptions = {
+      newest: { date: -1, createdAt: -1, _id: -1 },
+      oldest: { date: 1, createdAt: 1, _id: 1 },
+      amount_high: { amount: -1, date: -1, createdAt: -1, _id: -1 },
+      amount_low: { amount: 1, date: -1, createdAt: -1, _id: -1 },
+    };
+    if (typeof sort !== 'string' || !Object.hasOwn(sortOptions, sort)) {
+      return res.status(400).json({ code: 400, success: false, message: 'sort must be one of: newest, oldest, amount_high, amount_low.' });
+    }
 
     const currentPage = Math.max(
       Number(page),
@@ -566,10 +578,7 @@ const getGroupExpenses = async (req, res) => {
             select:
               'firstName lastName email avatar'
           })
-          .sort({
-            date: -1,
-            createdAt: -1
-          })
+          .sort(sortOptions[sort])
           .skip(skip)
           .limit(currentLimit),
 

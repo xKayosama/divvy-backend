@@ -147,8 +147,20 @@ const getGroupBills = async (req, res) => {
       category,
       status,
       isRecurring,
-      search
+      search,
+      sort = 'due_soonest'
     } = req.query;
+
+    // Include a unique tie-breaker for deterministic pagination.
+    const sortOptions = {
+      due_soonest: { dueDate: 1, createdAt: -1, _id: -1 },
+      due_latest: { dueDate: -1, createdAt: -1, _id: -1 },
+      amount_high: { amount: -1, dueDate: 1, createdAt: -1, _id: -1 },
+      amount_low: { amount: 1, dueDate: 1, createdAt: -1, _id: -1 },
+    };
+    if (typeof sort !== 'string' || !Object.hasOwn(sortOptions, sort)) {
+      return res.status(400).json({ code: 400, success: false, message: 'sort must be one of: due_soonest, due_latest, amount_high, amount_low.' });
+    }
 
     const currentPage = Math.max(Number(page), 1);
     const currentLimit = Math.min(
@@ -210,10 +222,7 @@ const getGroupBills = async (req, res) => {
           path: 'paidBy',
           select: 'firstName lastName email avatar'
         })
-        .sort({
-          dueDate: 1,
-          createdAt: -1
-        })
+        .sort(sortOptions[sort])
         .skip(skip)
         .limit(currentLimit),
 
