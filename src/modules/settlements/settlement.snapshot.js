@@ -3,9 +3,10 @@ const Expense = require('../expenses/Expense');
 const GroupMember = require('../groups/GroupMember');
 const Settlement = require('./Settlement');
 const id = value => value ? String(value._id || value) : '';
-const cents = value => Math.round(value * 100);
+const { money } = require('../../utils/money');
 
-async function getSettlementSnapshot(groupId) {
+async function getSettlementSnapshot(groupId, currency) {
+  const { readUnits: cents, scale } = money(currency);
   const memberships = await GroupMember.find({ groupId, status: 'ACTIVE' }).populate({ path: 'userId', select: 'firstName lastName email avatar' });
   const expenses = await Expense.find({ groupId });
   const payments = await Settlement.find({ groupId });
@@ -30,13 +31,14 @@ async function getSettlementSnapshot(groupId) {
   let d = 0; let c = 0;
   while (d < debtors.length && c < creditors.length) {
     const amount = Math.min(debtors[d].net, creditors[c].net);
-    if (amount > 0) settlements.push({ from: debtors[d].user, to: creditors[c].user, amount: amount / 100 });
+    if (amount > 0) settlements.push({ from: debtors[d].user, to: creditors[c].user, amount: amount / scale });
     debtors[d].net -= amount; creditors[c].net -= amount;
     if (!debtors[d].net) d++;
     if (!creditors[c].net) c++;
   }
   // A unique key claims a suggested pair against this exact repayment state.
   const snapshot = createHash('sha256').update(JSON.stringify({
+    currency: currency || 'PHP',
     balances: ordered.map(b => [id(b.user), b.net]),
     payments: payments.map(p => id(p)).sort(),
   })).digest('hex');

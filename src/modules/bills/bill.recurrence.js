@@ -1,3 +1,4 @@
+const { money } = require('../../utils/money');
 const Bill = require('./Bill');
 const Group = require('../groups/Group');
 
@@ -31,7 +32,9 @@ async function generateRecurringBills({ now = new Date(), maxPerSource = 120, on
         // Refresh to honor edits, disabling, deletion, and another worker's progress.
         const source = await Bill.findById(candidate._id);
         if (!source || !source.isRecurring || source.recurrenceSourceId) break;
-        if (!await Group.exists({ _id: source.groupId })) break;
+        const group = await Group.findById(source.groupId);
+        if (!group) break;
+        money(group.currency).readUnits(source.amount);
         const through = source.generatedThrough || 0;
         // Generate the next bill when the previous occurrence becomes due.
         if (occurrenceDate(source.dueDate, source.recurrence, through) > now) break;

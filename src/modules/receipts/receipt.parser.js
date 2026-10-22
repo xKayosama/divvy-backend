@@ -1,3 +1,5 @@
+const currencyCodes = require('../groups/group.currencies.json');
+const { money: currencyMoney } = require('../../utils/money');
 const { validateReceipt } = require('./receipt.schema');
 
 function parseReceipt(text, confidence = 100) {
@@ -11,6 +13,12 @@ function parseReceipt(text, confidence = 100) {
   const currencies = new Set();
   for (const [code, pattern] of [['PHP', /\b(?:PHP|PESO[S]?)\b|₱/i], ['USD', /\bUSD\b|US\$/i], ['EUR', /\bEUR\b|€/i], ['GBP', /\bGBP\b|£/i]]) {
     if (pattern.test(text)) currencies.add(code);
+  }
+  const codePattern = currencyCodes.join('|');
+  for (const match of text.matchAll(new RegExp(`\\b(${codePattern})\\s+\\d`, 'g'))) currencies.add(match[1]);
+  for (const line of lines) {
+    const match = line.match(new RegExp(`^(?:Currency:\\s*)?(${codePattern})$`, 'i'));
+    if (match) currencies.add(match[1].toUpperCase());
   }
   receipt.currency = currencies.size === 1 ? [...currencies][0] : null;
   if (!receipt.currency) receipt.warnings.push('Currency is missing or ambiguous; confirm it matches the Group currency.');
@@ -35,8 +43,10 @@ function parseReceipt(text, confidence = 100) {
   if (!receipt.date) receipt.warnings.push('Receipt date is missing, ambiguous, or invalid.');
 
   // Only accept a clearly labelled trailing amount, not card numbers or dates.
-  const money = '(?:\\d{1,3}(?:,\\d{3})+|\\d+)(?:\\.\\d{2})?';
-  const suffix = new RegExp(`(?:PHP|USD|EUR|GBP|US\\$|[$₱€£])?\\s*(${money})\\s*$`, 'i');
+  const decimals = receipt.currency ? currencyMoney(receipt.currency).digits : 3;
+  const fraction = decimals === 0 ? '' : `(?:\\.\\d{1,${decimals}})?`;
+  const money = '(?:\\d{1,3}(?:,\\d{3})+|\\d+)' + fraction;
+  const suffix = new RegExp(`(?:${codePattern}|US\\$|[$₱€£])?\\s*(${money})\\s*$`, 'i');
   const labels = [
     ['subtotal', /^sub[ -]?total\b/i],
     ['tax', /^(?:tax|vat|sales tax)\b/i],
@@ -49,18 +59,19 @@ function parseReceipt(text, confidence = 100) {
     if (label) {
       const remainder = line.replace(label[1], '').replace(/^\s*[:=]\s*/, '');
       // Avoid misreading "TOTAL ITEMS 2" or "TOTAL SAVINGS 10" as a payable total.
-      if (new RegExp(`^\\s*(?:PHP|USD|EUR|GBP|US\\$|[$₱€£])?\\s*${money}\\s*$`, 'i').test(remainder)) {
+      if (new RegExp(`^\\s*(?:${codePattern}|US\\$|[$₱€£])?\\s*${money}\\s*$`, 'i').test(remainder)) {
         values[label[0]].push(Number(remainder.match(suffix)[1].replace(/,/g, '')));
       }
       continue;
     }
     if (/\b(?:cash|change|tender|balance|payment|card|discount|savings|tax|vat|total|date|time|receipt|invoice|tel|phone|vatable|vat-exempt|taxable)\b/i.test(line)) continue;
     // Require decimals on item prices so address/phone/header numbers aren't items.
-    const item = line.match(/^(.+?[A-Za-z].*?)\s+(?:PHP|USD|EUR|GBP|US\$|[$₱€£])?\s*((?:\d{1,3}(?:,\d{3})+|\d+)\.\d{2})\s*$/i);
+    const itemDigits = receipt.currency ? decimals : '2,3';
+    const item = decimals === 0 ? null : line.match(new RegExp(`^(.+?[A-Za-z].*?)\\s+(?:${codePattern}|US\\$|[$₱€£])?\\s*((?:\\d{1,3}(?:,\\d{3})+|\\d+)\\.\\d{${itemDigits}})\\s*$`, 'i'));
     if (item) {
       let description = item[1].trim();
       let quantity = null, unitPrice = null;
-      const explicit = description.match(/^(\d+(?:\.\d+)?)\s*[x×@]\s*(\d+\.\d{2})\s+(.+)$/i);
+      const explicit = description.match(new RegExp(`^(\\d+(?:\\.\\d+)?)\\s*[x×@]\\s*(\\d+\\.\\d{${itemDigits}})\\s+(.+)$`, 'i'));
       if (explicit) { quantity = Number(explicit[1]); unitPrice = Number(explicit[2]); description = explicit[3]; }
       receipt.items.push({ description, quantity, unitPrice, total: Number(item[2].replace(/,/g, '')) });
     }

@@ -1,3 +1,4 @@
+const { money } = require('../../utils/money');
 const mongoose = require('mongoose');
 const Settlement = require('./Settlement');
 const { getSettlementSnapshot } = require('./settlement.snapshot');
@@ -5,10 +6,11 @@ const GroupMember = require('../groups/GroupMember');
 
 const getGroupSettlements = async (req, res) => {
   try {
-    const result = await getSettlementSnapshot(req.params.id);
+    const result = await getSettlementSnapshot(req.params.id, req.group?.currency);
     if (!result.memberCount) return res.status(404).json({ success: false, message: 'No active group members found.' });
     return res.status(200).json({ success: true, message: 'Group settlements calculated successfully.', data: { settlements: result.settlements } });
   } catch (error) {
+    if (error.code === 'CURRENCY_PRECISION_CONFLICT') return res.status(409).json({ success: false, message: error.message });
     console.error('Get group settlements error:', error);
     return res.status(500).json({ success: false, message: 'Something went wrong while calculating group settlements.' });
   }
@@ -24,10 +26,10 @@ const recordSettlement = async (req, res) => {
     if (req.body.from !== undefined && String(req.body.from) !== String(from)) {
       return res.status(403).json({ success: false, message: 'You can only record payments you sent.' });
     }
-    const scaled = amount * 100;
-    if (typeof amount !== 'number' || !Number.isFinite(amount) || amount <= 0 ||
-        !Number.isSafeInteger(Math.round(scaled)) || Math.abs(scaled - Math.round(scaled)) > 0.000001) {
-      return res.status(400).json({ success: false, message: 'Amount must be positive with at most two decimal places.' });
+    const m = money(req.group?.currency);
+    const scaled = amount * m.scale;
+    if (!m.valid(amount)) {
+      return res.status(400).json({ success: false, message: `Amount must be positive with ${m.label}.` });
     }
     const date = paidAt === undefined ? new Date() : new Date(paidAt);
     if ((paidAt !== undefined && typeof paidAt !== 'string') || !Number.isFinite(date.getTime()) || date > new Date()) {
@@ -48,18 +50,19 @@ const recordSettlement = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Recipient must be an active group member.' });
     }
     await Settlement.createIndexes(); // Fail closed if duplicate-payment indexes cannot be ensured.
-    const { settlements, snapshot } = await getSettlementSnapshot(req.params.id);
+    const { settlements, snapshot } = await getSettlementSnapshot(req.params.id, req.group?.currency);
     const outstanding = settlements.find(item => String(item.from._id) === String(from) && String(item.to._id) === String(to));
-    if (!outstanding || Math.round(amount * 100) > Math.round(outstanding.amount * 100)) {
+    if (!outstanding || m.units(amount) > m.units(outstanding.amount)) {
       return res.status(409).json({ success: false, message: 'This repayment is already settled or the amount exceeds the current outstanding balance. Reload payments.' });
     }
     const settlement = await Settlement.create({
-      groupId: req.params.id, from, to, amount: Math.round(scaled) / 100,
+      groupId: req.params.id, from, to, amount: Math.round(scaled) / m.scale,
       paidAt: date, recordedBy: from,
       ...(requestId ? { requestId } : {}), balanceClaim: `${snapshot}:${String(from)}:${String(to)}`
     });
     return res.status(201).json({ success: true, message: 'Settlement payment recorded.', data: { settlement } });
   } catch (error) {
+    if (error.code === 'CURRENCY_PRECISION_CONFLICT') return res.status(409).json({ success: false, message: error.message });
     if (error.code === 11000) {
       return res.status(409).json({ success: false, message: 'This payment was already recorded or the balance changed. Reload payments before retrying.' });
     }
@@ -85,6 +88,7 @@ const getSettlementHistory = async (req, res) => {
     return res.status(200).json({ success: true, data: { settlements },
       pagination: { page: Number(page), limit: Number(limit), total, totalPages: Math.ceil(total / Number(limit)) } });
   } catch (error) {
+    if (error.code === 'CURRENCY_PRECISION_CONFLICT') return res.status(409).json({ success: false, message: error.message });
     console.error('Settlement history error:', error);
     return res.status(500).json({ success: false, message: 'Something went wrong while retrieving settlement history.' });
   }

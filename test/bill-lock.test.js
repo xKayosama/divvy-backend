@@ -1,3 +1,5 @@
+const Group = require('../src/modules/groups/Group');
+const { beforeEach } = require('node:test');
 const { test, afterEach, mock } = require('node:test');
 const assert = require('node:assert/strict');
 const path = require('node:path');
@@ -54,3 +56,5 @@ test('an unpaid bill can still be marked paid', async () => {
   const res = response(); await controller.updateBill({ params: { billId: 'b' }, user: { _id: 'u' }, body: { status: 'PAID', paidBy: 'u' } }, res);
   assert.equal(res.statusCode, 200);
 });
+
+beforeEach(() => { mock.method(Group, 'findById', async () => ({ currency: 'PHP' })); });

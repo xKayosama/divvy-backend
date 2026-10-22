@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const groupIcons = require('./group.icons.json');
 
 const groupSchema = new mongoose.Schema(
   {
@@ -12,6 +13,12 @@ const groupSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,
       ref: 'User',
       required: true
+    },
+
+    icon: {
+      type: String,
+      enum: groupIcons,
+      default: 'people'
     },
 
     currency: {

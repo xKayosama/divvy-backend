@@ -1,3 +1,4 @@
+const groupIcons = new Set(require('./group.icons.json'));
 const Settlement = require('../settlements/Settlement');
 const User = require("../users/User");
 const Group = require("./Group");
@@ -5,20 +6,46 @@ const GroupMember = require("./GroupMember");
 const Expense = require("../expenses/Expense");
 const Bill = require("../bills/Bill");
 
+// Current ISO 4217 currencies (SIX List One, published 2026-09-17).
+// Funds, metals and test codes excluded; amounts use ISO currency minor units.
+const groupCurrencies = new Set(require('./group.currencies.json'));
+
+const hasGroupActivity = async (groupId) => {
+  const activity = await Promise.all([
+    Expense.exists({ groupId }), Bill.exists({ groupId }), Settlement.exists({ groupId })
+  ]);
+  return activity.some(Boolean);
+};
+
 const createGroup = async (req, res) => {
   try {
     const { name } = req.body;
 
-    if (!name || !name.trim()) {
+    if (typeof name !== "string" || !name.trim()) {
       return res.status(400).json({
         success: false,
         message: "Group name is required.",
       });
     }
 
+    const currency = req.body.currency === undefined
+      ? 'PHP'
+      : typeof req.body.currency === 'string' ? req.body.currency.trim().toUpperCase() : null;
+    if (!groupCurrencies.has(currency)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Choose a supported currency from the currency list.',
+      });
+    }
+
+    const icon = req.body.icon === undefined ? 'people' : req.body.icon;
+    if (!groupIcons.has(icon)) return res.status(400).json({ success: false, message: 'Choose a supported group icon.' });
+
     const group = await Group.create({
       name: name.trim(),
       ownerId: req.user._id,
+      currency,
+      icon,
     });
 
     await GroupMember.create({
@@ -65,6 +92,7 @@ const getMyGroups = async (req, res) => {
         id: membership.groupId._id,
         name: membership.groupId.name,
         currency: membership.groupId.currency,
+        icon: membership.groupId.icon ?? 'people',
         role: membership.role,
         owner: membership.groupId.ownerId,
         joinedAt: membership.joinedAt,
@@ -96,6 +124,9 @@ const getGroupById = async (req, res) => {
       select: "firstName lastName email avatar",
     });
 
+    const canChangeCurrency = String(req.group.ownerId) === String(req.user._id) &&
+      !await hasGroupActivity(req.group._id);
+
     return res.status(200).json({
       success: true,
       data: {
@@ -103,6 +134,8 @@ const getGroupById = async (req, res) => {
           id: req.group._id,
           name: req.group.name,
           currency: req.group.currency,
+          canChangeCurrency,
+          icon: req.group.icon ?? 'people',
           ownerId: req.group.ownerId,
           role: req.membership.role,
           createdAt: req.group.createdAt,
@@ -302,7 +335,7 @@ const getGroupMembers = async (req, res) => {
 const updateGroup = async (req, res) => {
   try {
     const { id: groupId } = req.params;
-    const { name, currency } = req.body;
+    const { name, currency, icon } = req.body;
 
     const group = await Group.findById(groupId);
 
@@ -323,6 +356,8 @@ const updateGroup = async (req, res) => {
       });
     }
 
+    if (icon !== undefined && !groupIcons.has(icon)) return res.status(400).json({ success: false, message: 'Choose a supported group icon.' });
+
     if (name !== undefined) {
       const updatedName = name.trim();
 
@@ -338,18 +373,15 @@ const updateGroup = async (req, res) => {
     }
 
     if (currency !== undefined) {
-      const updatedCurrency = currency.trim().toUpperCase();
-
-      if (!updatedCurrency) {
-        return res.status(400).json({
-          code: 400,
-          success: false,
-          message: "Currency is required.",
-        });
+      const updatedCurrency = typeof currency === 'string' ? currency.trim().toUpperCase() : '';
+      if (!groupCurrencies.has(updatedCurrency)) return res.status(400).json({ success: false, message: 'Choose a supported currency from the currency list.' });
+      if (updatedCurrency !== group.currency) {
+        if (await hasGroupActivity(group._id)) return res.status(409).json({ success: false, message: 'Currency cannot change after expenses, bills or payments have been recorded.' });
       }
-
       group.currency = updatedCurrency;
     }
+
+    if (icon !== undefined) group.icon = icon;
 
     await group.save();
 

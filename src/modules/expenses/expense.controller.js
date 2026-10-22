@@ -1,205 +1,41 @@
 const Expense = require('./Expense');
 const GroupMember = require('../groups/GroupMember');
 
-// -----------------------------
-// Calculate expense participants
-// -----------------------------
+const Group = require('../groups/Group');
+const { money } = require('../../utils/money');
 
-const calculateExpenseParticipants = ({
-  amount,
-  splitType,
-  participants
-}) => {
-  const normalizedAmount = Number(amount);
-  const normalizedSplitType = (
-    splitType || 'EQUAL'
-  ).toUpperCase();
-
-  if (
-    !['EQUAL', 'EXACT', 'PERCENTAGE'].includes(
-      normalizedSplitType
-    )
-  ) {
-    return {
-      error:
-        'Invalid split type. Supported types are EQUAL, EXACT, and PERCENTAGE.'
-    };
+const calculateExpenseParticipants = ({ amount, splitType = 'EQUAL', participants, currency }) => {
+  const m = money(currency);
+  if (!m.valid(amount)) return { error: `Expense amount must be positive with ${m.label}.` };
+  const type = typeof splitType === 'string' ? splitType.toUpperCase() : '';
+  const total = m.units(amount);
+  if (type === 'EQUAL') {
+    const base = Math.floor(total / participants.length);
+    return { splitType: type, participants: participants.map((p, i) => ({ userId: p.userId,
+      amount: (base + (i === 0 ? total - base * participants.length : 0)) / m.scale, percentage: null })) };
   }
-
-  // -----------------------------
-  // Equal split
-  // -----------------------------
-
-  if (normalizedSplitType === 'EQUAL') {
-    const baseAmount =
-      Math.floor(
-        (normalizedAmount / participants.length) * 100
-      ) / 100;
-
-    const remainder = Number(
-      (
-        normalizedAmount -
-        baseAmount * participants.length
-      ).toFixed(2)
-    );
-
-    const finalParticipants = participants.map(
-      (participant, index) => ({
-        userId: participant.userId,
-        amount: Number(
-          (
-            baseAmount +
-            (index === 0 ? remainder : 0)
-          ).toFixed(2)
-        ),
-        percentage: null
-      })
-    );
-
-    return {
-      splitType: normalizedSplitType,
-      participants: finalParticipants
-    };
+  if (type === 'EXACT') {
+    if (participants.some(p => !m.valid(p.amount, true))) return { error: `Each participant must have a nonnegative amount with ${m.label}.` };
+    const sum = participants.reduce((sum, p) => sum + m.units(p.amount), 0);
+    if (sum !== total) return { error: 'Participant amounts must equal the expense amount.' };
+    return { splitType: type, participants: participants.map(p => ({ userId: p.userId, amount: m.round(p.amount), percentage: null })) };
   }
-
-  // -----------------------------
-  // Exact split
-  // -----------------------------
-
-  if (normalizedSplitType === 'EXACT') {
-    if (
-      participants.some(
-        (participant) =>
-          participant.amount === undefined ||
-          participant.amount === null ||
-          Number(participant.amount) < 0
-      )
-    ) {
-      return {
-        error: 'Each participant must have a valid amount.'
-      };
+  if (type === 'PERCENTAGE') {
+    const percent = money('PHP'); // Percentages keep two decimal places regardless of currency.
+    if (participants.some(p => !percent.valid(p.percentage, true) || p.percentage > 100)) return { error: 'Each participant must have a valid percentage between 0 and 100.' };
+    if (participants.reduce((sum, p) => sum + percent.units(p.percentage), 0) !== 10000) return { error: 'Participant percentages must total 100%.' };
+    const amounts = participants.map(p => Number((BigInt(total) * BigInt(percent.units(p.percentage)) + 5000n) / 10000n));
+    const last = amounts.length - 1;
+    amounts[last] += total - amounts.reduce((sum, amount) => sum + amount, 0);
+    let excess = Math.max(0, -amounts[last]);
+    if (excess) amounts[last] = 0;
+    for (let i = last - 1; i >= 0 && excess; i--) {
+      const reduction = Math.min(amounts[i], excess);
+      amounts[i] -= reduction; excess -= reduction;
     }
-
-    const finalParticipants = participants.map(
-      (participant) => ({
-        userId: participant.userId,
-        amount: Number(
-          Number(participant.amount).toFixed(2)
-        ),
-        percentage: null
-      })
-    );
-
-    const participantTotal = Number(
-      finalParticipants
-        .reduce(
-          (total, participant) =>
-            total + participant.amount,
-          0
-        )
-        .toFixed(2)
-    );
-
-    if (
-      participantTotal !==
-      Number(normalizedAmount.toFixed(2))
-    ) {
-      return {
-        error:
-          'Participant amounts must equal the expense amount.'
-      };
-    }
-
-    return {
-      splitType: normalizedSplitType,
-      participants: finalParticipants
-    };
+    return { splitType: type, participants: participants.map((p, i) => ({ userId: p.userId, amount: amounts[i] / m.scale, percentage: p.percentage })) };
   }
-
-  // -----------------------------
-  // Percentage split
-  // -----------------------------
-
-  if (normalizedSplitType === 'PERCENTAGE') {
-    if (
-      participants.some(
-        (participant) =>
-          participant.percentage === undefined ||
-          participant.percentage === null ||
-          Number(participant.percentage) < 0 ||
-          Number(participant.percentage) > 100
-      )
-    ) {
-      return {
-        error:
-          'Each participant must have a valid percentage between 0 and 100.'
-      };
-    }
-
-    const totalPercentage = participants.reduce(
-      (total, participant) =>
-        total + Number(participant.percentage),
-      0
-    );
-
-    if (
-      Math.round(totalPercentage * 100) !== 10000
-    ) {
-      return {
-        error:
-          'Participant percentages must total 100%.'
-      };
-    }
-
-    const finalParticipants = participants.map(
-      (participant) => ({
-        userId: participant.userId,
-        amount: Number(
-          (
-            normalizedAmount *
-            (Number(participant.percentage) / 100)
-          ).toFixed(2)
-        ),
-        percentage: Number(
-          Number(participant.percentage).toFixed(2)
-        )
-      })
-    );
-
-    // Fix rounding difference
-    const calculatedTotal =
-      finalParticipants.reduce(
-        (total, participant) =>
-          total + participant.amount,
-        0
-      );
-
-    const difference = Number(
-      (
-        normalizedAmount -
-        calculatedTotal
-      ).toFixed(2)
-    );
-
-    if (difference !== 0) {
-      const lastParticipant =
-        finalParticipants[
-          finalParticipants.length - 1
-        ];
-
-      lastParticipant.amount = Number(
-        (
-          lastParticipant.amount +
-          difference
-        ).toFixed(2)
-      );
-    }
-
-    return {
-      splitType: normalizedSplitType,
-      participants: finalParticipants
-    };
-  }
+  return { error: 'Invalid split type. Supported types are EQUAL, EXACT, and PERCENTAGE.' };
 };
 
 // -----------------------------
@@ -233,12 +69,12 @@ const createExpense = async (req, res) => {
       });
     }
 
-    if (!amount || Number(amount) <= 0) {
+    if (!money(req.group?.currency).valid(amount)) {
       return res.status(400).json({
         code: 400,
         success: false,
         message:
-          'Expense amount must be greater than zero.'
+          `Expense amount must be positive with ${money(req.group?.currency).label}.`
       });
     }
 
@@ -335,6 +171,7 @@ const createExpense = async (req, res) => {
     const splitResult =
       calculateExpenseParticipants({
         amount: normalizedAmount,
+        currency: req.group?.currency,
         splitType,
         participants
       });
@@ -777,10 +614,9 @@ const updateExpense = async (
         ? description
         : expense.description;
 
-    const updatedAmount =
-      amount !== undefined
-        ? Number(amount)
-        : expense.amount;
+    const group = await Group.findById(expense.groupId);
+    if (!group) return res.status(404).json({ success: false, message: 'Group not found.' });
+    const updatedAmount = amount !== undefined ? amount : expense.amount;
 
     const updatedCategory =
       category !== undefined
@@ -826,14 +662,13 @@ const updateExpense = async (
     }
 
     if (
-      !updatedAmount ||
-      updatedAmount <= 0
+      !money(group.currency).valid(updatedAmount)
     ) {
       return res.status(400).json({
         code: 400,
         success: false,
         message:
-          'Expense amount must be greater than zero.'
+          `Expense amount must be positive with ${money(group.currency).label}.`
       });
     }
 
@@ -940,6 +775,7 @@ const updateExpense = async (
     const splitResult =
       calculateExpenseParticipants({
         amount: updatedAmount,
+        currency: group.currency,
         splitType:
           updatedSplitType,
         participants:

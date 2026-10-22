@@ -1,3 +1,4 @@
+const { money } = require('../../utils/money');
 const { applySettlementPayments } = require('../settlements/settlement.balances');
 const Expense = require('../expenses/Expense');
 const GroupMember = require('../groups/GroupMember');
@@ -5,6 +6,7 @@ const GroupMember = require('../groups/GroupMember');
 const getGroupBalances = async (req, res) => {
   try {
     const { id: groupId } = req.params;
+    const m = money(req.group?.currency);
 
     // Get active group members
     const memberships = await GroupMember.find({
@@ -47,7 +49,7 @@ const getGroupBalances = async (req, res) => {
 
       // Amount paid by the person
       if (balances[payerId]) {
-        balances[payerId].paid += expense.amount;
+        balances[payerId].paid += m.readUnits(expense.amount);
       }
 
       // Amount owed by each participant
@@ -55,44 +57,30 @@ const getGroupBalances = async (req, res) => {
         const participantId = (participant.userId._id || participant.userId).toString();
 
         if (balances[participantId]) {
-          balances[participantId].owed += participant.amount;
+          balances[participantId].owed += m.readUnits(participant.amount);
         }
       });
     });
 
-    // Calculate net balance
-    Object.values(balances).forEach((balance) => {
-      balance.paid = Number(balance.paid.toFixed(2));
-      balance.owed = Number(balance.owed.toFixed(2));
-
-      balance.net = Number(
-        (balance.paid - balance.owed).toFixed(2)
-      );
+    Object.values(balances).forEach(balance => {
+      balance.paid /= m.scale;
+      balance.owed /= m.scale;
     });
-
-    await applySettlementPayments(groupId, Object.values(balances));
-
-    // Calculate group totals
-    const totalExpenses = expenses.reduce(
-      (total, expense) => total + expense.amount,
-      0
-    );
-
-    const totalOwed = Object.values(balances).reduce(
-      (total, balance) => total + balance.owed,
-      0
-    );
+    await applySettlementPayments(groupId, Object.values(balances), req.group?.currency);
+    const totalExpenses = m.sum(expenses.map(expense => expense.amount));
+    const totalOwed = m.sum(Object.values(balances).map(balance => balance.owed));
 
     return res.status(200).json({
       success: true,
       message: 'Group balances retrieved successfully.',
       data: {
-        totalExpenses: Number(totalExpenses.toFixed(2)),
-        totalOwed: Number(totalOwed.toFixed(2)),
+        totalExpenses: totalExpenses,
+        totalOwed: totalOwed,
         members: Object.values(balances)
       }
     });
   } catch (error) {
+    if (error.code === 'CURRENCY_PRECISION_CONFLICT') return res.status(409).json({ success: false, message: error.message });
     console.error('Get group balances error:', error);
 
     return res.status(500).json({

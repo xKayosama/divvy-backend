@@ -1,3 +1,4 @@
+const { money } = require('../../utils/money');
 const DAY_MS = 24 * 60 * 60 * 1000;
 const WINDOW_DAYS = 7;
 const PREVIEW_LIMIT = 5;
@@ -33,7 +34,8 @@ function statusFilter(status, now = new Date()) {
   };
 }
 
-function buildBillReminders(bills, now = new Date()) {
+function buildBillReminders(bills, now = new Date(), currency) {
+  const { scale, readUnits } = money(currency);
   const { today, tomorrow, end } = dayWindow(now);
   const groups = { overdue: [], dueToday: [], dueSoon: [] };
   for (const bill of bills) {
@@ -48,7 +50,7 @@ function buildBillReminders(bills, now = new Date()) {
     entries.sort((a, b) => new Date(a.dueDate) - new Date(b.dueDate) || String(a._id).localeCompare(String(b._id)));
     result[name] = {
       count: entries.length,
-      amount: Number(entries.reduce((sum, bill) => sum + Math.round(bill.amount * 100), 0) / 100),
+      amount: Number(entries.reduce((sum, bill) => sum + readUnits(bill.amount), 0) / scale),
       bills: entries.slice(0, PREVIEW_LIMIT).map(bill => presentBill(bill, now))
     };
   }
