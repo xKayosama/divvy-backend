@@ -1,3 +1,5 @@
+const Group = require('../groups/Group');
+const { money } = require('../../utils/money');
 const { presentBill, statusFilter } = require('./bill.reminders');
 const Bill = require('./Bill');
 const GroupMember = require('../groups/GroupMember');
@@ -28,11 +30,11 @@ const createBill = async (req, res) => {
     }
 
     // Validate amount
-    if (amount === undefined || Number(amount) <= 0) {
+    if (!money(req.group?.currency).valid(amount)) {
       return res.status(400).json({
         code:400,
         success: false,
-        message: 'Bill amount must be greater than zero.'
+        message: `Bill amount must be positive with ${money(req.group?.currency).label}.`
       });
     }
 
@@ -376,10 +378,9 @@ const updateBill = async (req, res) => {
     const updatedName =
       name !== undefined ? name.trim() : bill.name;
 
-    const updatedAmount =
-      amount !== undefined
-        ? Number(amount)
-        : bill.amount;
+    const group = await Group.findById(bill.groupId);
+    if (!group) return res.status(404).json({ success: false, message: 'Group not found.' });
+    const updatedAmount = amount !== undefined ? amount : bill.amount;
 
     const updatedCategory =
       category !== undefined
@@ -426,11 +427,11 @@ const updateBill = async (req, res) => {
     }
 
     // Validate amount
-    if (!updatedAmount || updatedAmount <= 0) {
+    if (!money(group.currency).valid(updatedAmount)) {
       return res.status(400).json({
         code:400,
         success: false,
-        message: 'Bill amount must be greater than zero.'
+        message: `Bill amount must be positive with ${money(group.currency).label}.`
       });
     }
 

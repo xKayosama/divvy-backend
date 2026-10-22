@@ -1,9 +1,10 @@
 const Settlement = require('./Settlement');
-const cents = value => Math.round(value * 100);
+const { money } = require('../../utils/money');
 const userId = user => String(user._id || user);
 
 // Keep purchase totals separate from repayments; use cents for net arithmetic.
-const applySettlementPayments = async (groupId, balances) => {
+const applySettlementPayments = async (groupId, balances, currency) => {
+  const { readUnits: cents, scale } = money(currency);
   const payments = await Settlement.find({ groupId });
   const byUser = new Map(balances.map(balance => [userId(balance.user), balance]));
   for (const balance of balances) {
@@ -18,9 +19,9 @@ const applySettlementPayments = async (groupId, balances) => {
   }
   for (const balance of balances) {
     balance.net = (cents(balance.paid) - cents(balance.owed) +
-      balance.settlementPaid - balance.settlementReceived) / 100;
-    balance.settlementPaid /= 100;
-    balance.settlementReceived /= 100;
+      balance.settlementPaid - balance.settlementReceived) / scale;
+    balance.settlementPaid /= scale;
+    balance.settlementReceived /= scale;
   }
 };
 

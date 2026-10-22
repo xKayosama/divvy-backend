@@ -1,3 +1,4 @@
+const { beforeEach } = require('node:test');
 const { test, afterEach, mock } = require('node:test');
 const assert = require('node:assert/strict');
 const Group = require('../src/modules/groups/Group');
@@ -39,13 +40,14 @@ test('Group access uses active group membership and denies missing groups/nonmem
 
 test('Group create, list, read, update, delete preserve owner membership and cascades', async () => {
   const record = { _id: 'g', name: 'Trip', currency: 'PHP', ownerId: 'a', save: async () => {} };
-  mock.method(Group, 'create', async fields => { assert.deepEqual(fields, { name: 'Trip', ownerId: 'a' }); return record; });
+  mock.method(Group, 'create', async fields => { assert.deepEqual(fields, { name: 'Trip', ownerId: 'a', currency: 'PHP', icon: 'people' }); return record; });
   mock.method(Member, 'create', async fields => { assert.deepEqual(fields, { groupId: 'g', userId: 'a', role: 'OWNER' }); return fields; });
   let request = req(); request.body.name = ' Trip '; let res = response(); await groups.createGroup(request, res); assert.equal(res.statusCode, 201); assert.equal(res.body.data.group, record);
   mock.method(Member, 'find', () => query([{ groupId: record, userId: { _id: 'a' }, role: 'OWNER' }]));
   res = response(); await groups.getMyGroups(req(), res); assert.equal(res.body.data.groups[0].id, 'g');
   request = req(); request.group = record; res = response(); await groups.getGroupById(request, res); assert.equal(res.body.data.group.id, 'g');
   mock.method(Group, 'findById', async () => record);
+  for (const Model of [Expense, Bill, require('../src/modules/settlements/Settlement')]) mock.method(Model, 'exists', async () => null);
   request = req(); request.body = { name: ' Event ', currency: ' usd ' }; res = response(); await groups.updateGroup(request, res); assert.equal(record.name, 'Event'); assert.equal(record.currency, 'USD');
   request.user._id = 'b'; res = response(); await groups.updateGroup(request, res); assert.equal(res.statusCode, 403);
   mock.method(Group, 'findByIdAndDelete', async id => assert.equal(id, 'g'));
@@ -67,7 +69,7 @@ test('group list skips missing references and preserves valid memberships', asyn
   await groups.getMyGroups(req(), res);
   assert.equal(res.statusCode, 200);
   assert.deepEqual(res.body.data.groups, [{
-    id: 'g', name: 'Trip', currency: 'PHP', role: 'OWNER',
+    id: 'g', name: 'Trip', currency: 'PHP', icon: 'people', role: 'OWNER',
     owner: record.ownerId, joinedAt: '2026-10-02'
   }]);
   mock.method(Member, 'find', () => query([{ groupId: null }, {}]));
@@ -208,4 +210,122 @@ test('Express starts, health works, groups require auth and legacy route is gone
     for (const path of ['/api/groups', '/api/groups/g/members', '/api/groups/g/expenses', '/api/groups/g/bills', '/api/groups/g/dashboard', '/api/groups/g/balances', '/api/groups/g/settlements']) assert.equal((await fetch(base + path)).status, 401);
     assert.equal((await fetch(`${base}/api/households`)).status, 404);
   } finally { await new Promise(resolve => server.close(resolve)); }
+});
+
+
+test('group creation persists every supported currency and normalizes input', async () => {
+  mock.method(Group, 'create', async fields => ({ _id: 'g', ...fields }));
+  mock.method(Member, 'create', async fields => fields);
+  for (const currency of require('../src/modules/groups/group.currencies.json')) {
+    const request = req();
+    request.body = { name: 'Trip', currency: ` ${currency.toLowerCase()} ` };
+    const res = response();
+    await groups.createGroup(request, res);
+    assert.equal(res.statusCode, 201);
+    assert.equal(res.body.data.group.currency, currency);
+  }
+});
+
+test('group creation rejects invalid currency before creating any records', async () => {
+  mock.method(Group, 'create', () => assert.fail('must not create a group'));
+  mock.method(Member, 'create', () => assert.fail('must not create membership'));
+  for (const currency of ['', '   ', 'XYZ', 'BGN', 'HRK', 'XAU', 'XTS', 'XXX', 'CLF', null, 123, [], {}, ['USD']]) {
+    const request = req();
+    request.body = { name: 'Trip', currency };
+    const res = response();
+    await groups.createGroup(request, res);
+    assert.equal(res.statusCode, 400);
+    assert.equal(res.body.success, false);
+  }
+});
+
+
+test('group currency catalog contains current currencies with unique codes', () => {
+  const codes = require('../src/modules/groups/group.currencies.json');
+  assert.equal(codes.length, 155);
+  assert.equal(new Set(codes).size, codes.length);
+  assert.ok(codes.every(code => /^[A-Z]{3}$/.test(code)));
+  for (const code of ['PHP', 'JPY', 'KWD', 'XCG', 'ZWG', 'XAF', 'XOF']) assert.ok(codes.includes(code));
+});
+
+beforeEach(() => {
+  mock.method(Group, 'findById', async () => ({ currency: 'PHP' }));
+  for (const Model of [Expense, Bill, require('../src/modules/settlements/Settlement')]) mock.method(Model, 'exists', async () => null);
+});
+
+
+test('group creation validates and persists every allowed icon', async () => {
+  mock.method(Member, 'create', async fields => fields);
+  mock.method(Group, 'create', async fields => ({ _id: 'g', ...fields }));
+  for (const icon of require('../src/modules/groups/group.icons.json')) {
+    const request = req(); request.body = { name: 'Trip', icon };
+    const res = response(); await groups.createGroup(request, res);
+    assert.equal(res.statusCode, 201); assert.equal(res.body.data.group.icon, icon);
+  }
+  mock.method(Group, 'create', () => assert.fail('invalid icon must not create a group'));
+  for (const icon of [null, '', 'invalid', 3, {}, [], ['home']]) {
+    const request = req(); request.body = { name: 'Trip', icon };
+    const res = response(); await groups.createGroup(request, res); assert.equal(res.statusCode, 400);
+  }
+});
+
+test('group icon updates require ownership, preserve omitted icons and reject invalid values', async () => {
+  const record = { _id: 'g', name: 'Home', currency: 'PHP', icon: 'home', ownerId: 'a', async save() {} };
+  mock.method(Group, 'findById', async () => record);
+  const request = req(); request.body = { name: 'Renamed' };
+  let res = response(); await groups.updateGroup(request, res);
+  assert.equal(res.statusCode, 200); assert.equal(record.icon, 'home');
+  request.body = { icon: 'airplane' }; res = response(); await groups.updateGroup(request, res);
+  assert.equal(res.statusCode, 200); assert.equal(record.icon, 'airplane');
+  request.user._id = 'b'; request.body.icon = 'paw'; res = response(); await groups.updateGroup(request, res);
+  assert.equal(res.statusCode, 403); assert.equal(record.icon, 'airplane');
+  request.user._id = 'a';
+  for (const icon of [null, '', 'invalid', {}, []]) {
+    request.body.icon = icon; res = response(); await groups.updateGroup(request, res);
+    assert.equal(res.statusCode, 400); assert.equal(record.icon, 'airplane');
+  }
+});
+
+test('group icon schema defaults legacy groups and rejects unknown icon values', () => {
+  const fields = { name: 'Home', ownerId: '012345678901234567890123' };
+  assert.equal(new Group(fields).icon, 'people');
+  assert.ok(new Group({ ...fields, icon: 'invalid' }).validateSync().errors.icon);
+});
+
+
+for (const [label, ActiveModel] of [['expense', Expense], ['bill', Bill], ['payment', require('../src/modules/settlements/Settlement')], ['empty', null]]) {
+  test(`currency eligibility and saving agree for a group with ${label} activity`, async () => {
+    let saves = 0;
+    const record = { _id: 'g', name: 'Home', ownerId: 'a', currency: 'PHP', async save() { saves++; } };
+    const request = req(); request.group = record;
+    mock.method(Group, 'findById', async () => record);
+    mock.method(Member, 'find', () => query([]));
+    if (ActiveModel) mock.method(ActiveModel, 'exists', async filter => { assert.deepEqual(filter, { groupId: 'g' }); return { _id: 'record' }; });
+    let res = response(); await groups.getGroupById(request, res);
+    assert.equal(res.statusCode, 200);
+    assert.equal(res.body.data.group.canChangeCurrency, !ActiveModel);
+    request.body = { currency: 'JPY' }; res = response(); await groups.updateGroup(request, res);
+    assert.equal(res.statusCode, ActiveModel ? 409 : 200);
+    assert.equal(record.currency, ActiveModel ? 'PHP' : 'JPY');
+    assert.equal(saves, ActiveModel ? 0 : 1);
+    if (ActiveModel) {
+      request.body = { name: 'Renamed', currency: 'PHP' }; res = response(); await groups.updateGroup(request, res);
+      assert.equal(res.statusCode, 200); assert.equal(record.name, 'Renamed');
+    }
+  });
+}
+
+test('currency editing is owner-only and saving rechecks activity after eligibility was fetched', async () => {
+  const record = { _id: 'g', name: 'Home', ownerId: 'a', currency: 'PHP', async save() { assert.fail('must not save'); } };
+  const request = req(); request.group = record;
+  mock.method(Group, 'findById', async () => record);
+  mock.method(Member, 'find', () => query([]));
+  let res = response(); await groups.getGroupById(request, res);
+  assert.equal(res.body.data.group.canChangeCurrency, true);
+  mock.method(Bill, 'exists', async () => ({ _id: 'new-bill' }));
+  request.body = { currency: 'JPY' }; res = response(); await groups.updateGroup(request, res);
+  assert.equal(res.statusCode, 409); assert.equal(record.currency, 'PHP');
+  request.user._id = 'other'; request.membership.role = 'MEMBER';
+  res = response(); await groups.getGroupById(request, res); assert.equal(res.body.data.group.canChangeCurrency, false);
+  res = response(); await groups.updateGroup(request, res); assert.equal(res.statusCode, 403);
 });

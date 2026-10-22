@@ -1,3 +1,5 @@
+const Group = require('../src/modules/groups/Group');
+const { beforeEach } = require('node:test');
 const { test, afterEach, mock } = require('node:test');
 const assert = require('node:assert/strict');
 const Bill = require('../src/modules/bills/Bill');
@@ -106,3 +108,5 @@ test('bill list and detail preserve the stored date and legacy null', async () =
   res = response(); await getBillById(request({}), res);
   assert.equal(res.body.data.bill.paidAt, now);
 });
+
+beforeEach(() => { mock.method(Group, 'findById', async () => ({ currency: 'PHP' })); });

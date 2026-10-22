@@ -23,7 +23,7 @@ function fixture(overrides = {}) {
     return { cursor: async function* () { yield source; } };
   });
   mock.method(Bill, 'findById', async () => source);
-  mock.method(Group, 'exists', async () => true);
+  mock.method(Group, 'findById', async () => ({ currency: 'PHP' }));
   mock.method(Bill, 'exists', async filter => generated.has(filter.occurrenceNumber));
   mock.method(Bill, 'updateOne', async (filter, update, options) => {
     if (update.$setOnInsert) {
@@ -59,7 +59,7 @@ test('catches up with a bounded batch and does not recreate deleted occurrences'
 test('disabled/deleted sources and deleted groups stop generation', async () => {
   const { source, generated } = fixture({ isRecurring: false });
   await generateRecurringBills(); assert.equal(generated.size, 0);
-  source.isRecurring = true; mock.method(Group, 'exists', async () => null);
+  source.isRecurring = true; mock.method(Group, 'findById', async () => null);
   await generateRecurringBills(); assert.equal(generated.size, 0);
   mock.method(Bill, 'findById', async () => null);
   await generateRecurringBills(); assert.equal(generated.size, 0);
@@ -92,4 +92,20 @@ test('worker requires indexes and runs immediately on startup', async () => {
   const stop = await startRecurringBillWorker(); assert.ok(indexed); stop();
   mock.method(Bill, 'createIndexes', async () => { throw new Error('Index unavailable'); });
   await assert.rejects(startRecurringBillWorker(), /Index unavailable/);
+});
+
+
+test('recurring KWD bills retain fils and legacy fractional JPY sources are blocked', async () => {
+  const { generated } = fixture({ amount: 0.001 });
+  mock.method(Group, 'findById', async () => ({ currency: 'KWD' }));
+  await generateRecurringBills({ now: new Date('2026-01-31') });
+  assert.equal(generated.get(1).amount, 0.001);
+  mock.restoreAll();
+  const legacy = fixture({ amount: 1.25 });
+  mock.method(Group, 'findById', async () => ({ currency: 'JPY' }));
+  const errors = [];
+  await generateRecurringBills({ now: new Date('2026-01-31'), onError: (...args) => errors.push(args) });
+  assert.equal(legacy.generated.size, 0);
+  assert.equal(errors[0][1].code, 'CURRENCY_PRECISION_CONFLICT');
+  assert.equal(legacy.source.amount, 1.25);
 });

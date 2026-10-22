@@ -426,3 +426,40 @@ Values are exact, case-sensitive strings. Blank, unknown, repeated or structured
 values return HTTP 400. Omission preserves the existing primary/default order.
 Unique ID tie-breakers keep records with equal dates/amounts consistently ordered.
 Authentication and active membership requirements are unchanged.
+
+
+### Group creation currency
+
+`POST /api/groups` accepts `{ "name": "Trip", "currency": "USD" }` with bearer authentication.
+Currency is optional (defaults to PHP), trimmed and uppercased. Supported values are the 155 current ISO 4217 currencies in
+`src/modules/groups/group.currencies.json`, sourced from SIX List One published
+2026-09-17. Funds, precious metals, testing and no-currency codes are excluded.
+Invalid or unsupported values return 400 before creating records. Success returns
+201 with the saved currency in `data.group.currency`. Amounts and splits use the currency’s ISO minor unit precision: whole units for
+JPY, two decimals for PHP/USD, and three for KWD/BHD. Percentages allow two decimals.
+Excess amount precision is rejected with 400 rather than rounded. Equal splits
+assign the remainder to the first participant; percentage splits reconcile to
+the exact total, redistributing excess rounding to avoid negative shares. No exchange conversion is performed.
+Existing groups are unchanged.
+
+
+### Native currency precision (2026-10-22)
+
+The currency precision catalog lives in `src/utils/currency-precision.json`.
+Existing amount fields remain numbers in major units; this change performs no
+conversion, backfill, or database writes. Expenses, exact splits, bills and
+repayments validate native precision on creation/update. Minimum supported
+amount is 1 native minor unit (e.g. JPY 1, PHP 0.01, KWD 0.001).
+Dashboard totals, category breakdowns, comparisons, reminders, balances and
+settlement suggestions sum integer minor units. Recurring bills preserve the
+source amount and check its currency precision before generating occurrences.
+
+Legacy records that violate native precision (e.g. fractional JPY from an older
+client) must be reviewed against original records. Calculations return HTTP 409
+with an explanation rather than silently rounding those amounts; recurring
+sources with that conflict are skipped and logged. No automatic correction is
+performed. Historical fractional values remain visible in the mobile detail
+screens for review. Currency changes on groups with expenses, bills or
+settlements return 409 to prevent reinterpreting recorded amounts. Mobile
+settings continue to show currency read-only. Deploy backend and mobile changes
+together; older clients restrict entry/display to two decimals.
