@@ -30,6 +30,14 @@ const billSchema = new mongoose.Schema(
         'PHONE',
         'SUBSCRIPTION',
         'INSURANCE',
+        'GAS',
+        'ASSOCIATION_DUES',
+        'EDUCATION',
+        'CHILDCARE',
+        'LOAN',
+        'CREDIT_CARD',
+        'PROPERTY_TAX',
+        'MAINTENANCE',
         'OTHER'
       ],
       default: 'OTHER'
