@@ -118,16 +118,93 @@ test('itemized ledger shares drive existing balances and repayment suggestions w
   const { getGroupBalances } = require('../src/modules/balances/balance.controller');
   const { getGroupSettlements } = require('../src/modules/settlements/settlement.controller');
   const Settlement = require('../src/modules/settlements/Settlement');
-  const result = calculateItemizedExpense({ amount: .005, items: [line(.002, [a]), line(.003, [a,b])], currency: 'KWD' });
-  const saved = { amount: .005, paidBy: a, ...result };
+  const result = calculateItemizedExpense({ amount: .007, items: [line(.002, [a]), line(.003, [a,b])], adjustments: { tip: { amount: .002, allocation: 'EQUAL' } }, currency: 'KWD' });
+  const saved = { amount: .007, paidBy: a, ...result };
   const query = value => ({ populate() { return this; }, then(resolve, reject) { return Promise.resolve(value).then(resolve, reject); } });
   mock.method(Member, 'find', () => query([a,b].map(_id => ({ userId: { _id } }))));
   mock.method(Expense, 'find', () => query([saved]));
   mock.method(Settlement, 'find', () => query([]));
   let res = response(); await getGroupBalances(request({}, 'KWD'), res);
   assert.equal(res.statusCode, 200);
-  assert.equal(res.body.data.totalExpenses, .005); assert.equal(res.body.data.totalOwed, .005);
-  assert.deepEqual(res.body.data.members.map(member => member.net), [.001, -.001]);
+  assert.equal(res.body.data.totalExpenses, .007); assert.equal(res.body.data.totalOwed, .007);
+  assert.deepEqual(res.body.data.members.map(member => member.net), [.002, -.002]);
   res = response(); await getGroupSettlements(request({}, 'KWD'), res);
-  assert.equal(res.statusCode, 200); assert.equal(res.body.data.settlements[0].amount, .001);
+  assert.equal(res.statusCode, 200); assert.equal(res.body.data.settlements[0].amount, .002);
+});
+
+
+test('tax and tip independently allocate equally or by pre-adjustment item subtotals', () => {
+  const result = calculateItemizedExpense({ amount: 130, currency: 'PHP', items: [line(75, [a]), line(25, [b])], adjustments: { tax: { amount: 20, allocation: 'PROPORTIONAL' }, tip: { amount: 10, allocation: 'EQUAL' } } });
+  assert.equal(result.error, undefined);
+  assert.deepEqual(result.participants.map(p => p.amount), [95, 35]);
+  assert.deepEqual(result.adjustments, { tax: { amount: 20, allocation: 'PROPORTIONAL' }, tip: { amount: 10, allocation: 'EQUAL' } });
+});
+for (const [currency, subtotal, extra, total, expected] of [['JPY', 4, 1, 5, [4,1]], ['PHP', .04, .01, .05, [.04,.01]], ['KWD', .004, .001, .005, [.004,.001]]]) {
+  test(`${currency}: extras preserve every minor unit with largest remainder allocation`, () => {
+    const result = calculateItemizedExpense({ currency, amount: total, items: [line(subtotal * .75, [a]), line(subtotal * .25, [b])], adjustments: { tax: { amount: extra, allocation: 'PROPORTIONAL' } } });
+    assert.equal(result.error, undefined);
+    assert.deepEqual(result.participants.map(p => p.amount), expected);
+  });
+}
+test('equal extras include zero-item members; proportional extras exclude zero weights and reject zero subtotal', () => {
+  for (const allocation of ['EQUAL','PROPORTIONAL']) {
+    const result = calculateItemizedExpense({ currency: 'JPY', amount: 4, items: [line(2,[a]),line(0,[b])], adjustments: { tip: { amount: 2, allocation } } });
+    assert.deepEqual(result.participants.map(p=>p.amount), allocation === 'EQUAL' ? [3,1] : [4,0]);
+  }
+  assert.ok(calculateItemizedExpense({ currency:'JPY',amount:1,items:[line(0)],adjustments:{tax:{amount:1,allocation:'PROPORTIONAL'}} }).error);
+  assert.deepEqual(calculateItemizedExpense({ currency:'JPY',amount:1,items:[line(0)],adjustments:{tax:{amount:1,allocation:'EQUAL'}} }).participants.map(p=>p.amount),[1,0]);
+});
+test('invalid extras and totals are rejected before saving', () => {
+  for (const adjustments of [null, [], 'bad', {other:{}}, {tax:null}, {tax:{}}, {tax:{amount:-1,allocation:'EQUAL'}}, {tax:{amount:'1',allocation:'EQUAL'}}, {tax:{amount:.001,allocation:'EQUAL'}}, {tip:{amount:1,allocation:'UNKNOWN'}}]) {
+    assert.ok(calculateItemizedExpense({currency:'PHP',amount:1,items:[line(1)],adjustments}).error, JSON.stringify(adjustments));
+  }
+  assert.ok(calculateItemizedExpense({currency:'PHP',amount:1,items:[line(1)],adjustments:{tax:{amount:1,allocation:'EQUAL'}}}).error);
+});
+test('create and update retain extras, recompute totals, and conversion clears them', async () => {
+  allowMembers();
+  const extras = {tax:{amount:2,allocation:'PROPORTIONAL'},tip:{amount:1,allocation:'EQUAL'}};
+  let saved;
+  mock.method(Expense,'create',async fields => {saved={_id:'e',...fields,async populate(){},async save(){}};return saved;});
+  let res=response();
+  await controller.createExpense(request({description:'Meal',amount:13,paidBy:a,splitType:'ITEMIZED',items:[line(6,[a]),line(4,[b])],adjustments:extras}),res);
+  assert.equal(res.statusCode,201);
+  assert.deepEqual(saved.adjustments,extras);
+  mock.method(Expense,'findById',async()=>saved);
+  mock.method(Group,'findById',async()=>({currency:'PHP'}));
+  res=response();
+  await controller.updateExpense(request({notes:'Only notes'}),res);
+  assert.equal(res.statusCode,200);
+  assert.deepEqual(saved.adjustments,extras);
+  assert.deepEqual(saved.participants.map(p=>p.amount),[7.7,5.3]);
+  res=response();
+  await controller.updateExpense(request({amount:12,adjustments:{tax:{amount:2,allocation:'EQUAL'}}}),res);
+  assert.equal(res.statusCode,200);
+  assert.deepEqual(saved.participants.map(p=>p.amount),[7,5]);
+  res=response();
+  await controller.updateExpense(request({splitType:'EQUAL',participants:[{userId:a},{userId:b}]}),res);
+  assert.equal(res.statusCode,200);
+  assert.equal(saved.adjustments,undefined);
+});
+test('schema serializes extras and recalculation accepts persisted Mongoose subdocuments', async()=>{
+ const doc=new Expense({groupId:a,createdBy:a,description:'Meal',amount:11,paidBy:a,splitType:'ITEMIZED',items:[line(10)],participants:[{userId:a,amount:5.5},{userId:b,amount:5.5}],adjustments:{tax:{amount:1,allocation:'EQUAL'}}});
+ assert.equal(doc.validateSync(),undefined);
+ assert.equal(doc.toObject().adjustments.tax.amount,1);
+ const result=calculateItemizedExpense({amount:11,currency:'PHP',items:doc.items,adjustments:doc.adjustments});
+ assert.equal(result.error,undefined);
+ assert.deepEqual(result.participants.map(p=>p.amount),[5.5,5.5]);
+ doc.splitType='EQUAL';doc.items=undefined;
+ assert.ok(doc.validateSync().errors.adjustments);
+});
+
+test('standard adjustments and inactive item members are rejected with no expense write', async () => {
+  allowMembers();
+  mock.method(Expense,'create',()=>assert.fail('invalid request must not write'));
+  const extras={tax:{amount:1,allocation:'EQUAL'}};
+  for (const body of [
+    {description:'Meal',amount:2,paidBy:a,splitType:'EQUAL',participants:[{userId:a}],adjustments:extras},
+    {description:'Meal',amount:2,paidBy:a,splitType:'ITEMIZED',items:[line(1,[outsider])],adjustments:extras},
+    {description:'Meal',amount:2,paidBy:a,splitType:'ITEMIZED',items:[line(1)],adjustments:{tax:{amount:-1,allocation:'EQUAL'}}}
+  ]) {
+    const res=response(); await controller.createExpense(request(body),res); assert.equal(res.statusCode,400);
+  }
 });

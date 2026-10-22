@@ -504,3 +504,29 @@ prefill descriptions, quantities and line totals, leaving missing fields and
 member assignments for the user. Tax/tip may be separate assigned lines. Negative
 discounts and automatic proportional tax/tip allocation are not implemented.
 Deploy backend support before clients that submit ITEMIZED expenses.
+
+
+## Itemized tax and tip allocation (verified 2026-10-22)
+
+- ITEMIZED create/update requests accept optional `adjustments: { tax?: { amount, allocation }, tip?: { amount, allocation } }`. Each amount is a nonnegative number with native currency precision; allocation is `EQUAL` or `PROPORTIONAL`. Missing adjustments preserve legacy behavior. The expense total must equal line totals plus tax plus tip. Standard requests reject adjustments; converting to Standard clears stored adjustments.
+- Tax and tip independently allocate among the unique members assigned to items, in first-appearance order. EQUAL includes members assigned only zero-cost items. PROPORTIONAL uses each member’s allocated item subtotal before either adjustment (including existing per-line rounding), so tip never includes tax. A positive proportional charge with zero item subtotal is rejected; choose EQUAL instead. Zero charges are allowed in either mode.
+- All calculations use exact integer native minor units. Each adjustment uses largest-remainder allocation, with ties resolved by member first-appearance order. Server-derived participants include items and both charges, so balances and settlement suggestions include extras once. Submitted participant totals remain forbidden for ITEMIZED.
+- Responses persist adjustment amounts and methods. Partial updates retain omitted adjustments and revalidate/recalculate; supplying `adjustments` replaces the entire adjustment object, so `{}` clears both. Omit a tax/tip key to remove it when replacing the object. No data migration is required.
+- Mobile provides tax/tip amount fields and independent Equally / By item amounts controls, defaulting to proportional. Blank means zero. Receipt tax and tip prefill for review; remove duplicate tax/tip item lines before using dedicated extras. Existing receipt review and total checks remain. Draft changes participate in unsaved-change protection. Preview shows each member’s item subtotal, tax, tip and final total; details show saved charges and methods, and editing restores them.
+- Deploy the backend before the updated itemized mobile flow. Older clients do not understand saved adjustments and should be updated before editing these expenses.
+
+
+## Split by shares (verified 2026-10-22)
+
+- Standard expenses additionally support `splitType: "SHARES"` with `participants: [{ userId, shares }]`. Shares must be numeric positive whole numbers from 1 to 1,000,000. A 2:1 weight divides the total in that ratio. Existing authentication, unique participant, ACTIVE membership and payer checks apply.
+- The server calculates participant amounts from weights, ignoring any submitted participant amounts. Calculations use integer native currency minor units and exact integer arithmetic. Fractional allocations are floored, then remaining units go to the largest fractional remainders, with participant order breaking ties. Amounts always reconcile to the expense total, including JPY and KWD.
+- Responses persist `participants[].shares` alongside calculated amounts. Updates retain omitted weights and recalculate when the total changes. Mobile loads weights when editing and displays them in expense details. Switching split modes replaces the corresponding participant metadata. No migration is required; existing splits retain their behavior.
+- Mobile keeps Standard and Equal as the defaults. By shares includes an icon, defaults each selected member to 1, supports number entry and plus/minus controls, and previews each amount and total shares before saving. Invalid weights block saving.
+- Deploy the backend before using SHARES on mobile. Older backend versions do not support this split type.
+
+
+## Expanded expense and bill categories (verified 2026-10-22)
+
+- Expense categories additionally accept COFFEE, TRAVEL, ACCOMMODATION, FUEL, PARKING, EDUCATION, PETS, GIFTS, HOME_MAINTENANCE, PERSONAL_CARE, FITNESS and SUBSCRIPTIONS.
+- Bill categories additionally accept GAS, ASSOCIATION_DUES, EDUCATION, CHILDCARE, LOAN, CREDIT_CARD, PROPERTY_TAX and MAINTENANCE.
+- Existing category identifiers and Other defaults are preserved. New values use the same create/update/list category contract. Dashboard expense breakdowns recognize the expanded schema enum, and mobile dashboard shortcuts accept them as filters. Forms, filters, list/detail labels and icons include the new values; multiword identifiers display with spaces. No migration is needed. Deploy the backend category enums before using the updated mobile selectors.

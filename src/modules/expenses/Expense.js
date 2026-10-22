@@ -14,6 +14,14 @@ const expenseParticipantSchema = new mongoose.Schema(
       min: 0
     },
 
+    shares: {
+      type: Number,
+      min: 1,
+      max: 1000000,
+      default: null,
+      validate: { validator: value => value === null || Number.isInteger(value), message: 'Shares must be whole numbers.' }
+    },
+
      percentage: {
       type: Number,
       min: 0,
@@ -58,6 +66,18 @@ const expenseSchema = new mongoose.Schema(
         'HEALTHCARE',
         'ENTERTAINMENT',
         'SHOPPING',
+        'COFFEE',
+        'TRAVEL',
+        'ACCOMMODATION',
+        'FUEL',
+        'PARKING',
+        'EDUCATION',
+        'PETS',
+        'GIFTS',
+        'HOME_MAINTENANCE',
+        'PERSONAL_CARE',
+        'FITNESS',
+        'SUBSCRIPTIONS',
         'OTHERS'
       ],
       default: 'OTHERS'
@@ -75,7 +95,8 @@ const expenseSchema = new mongoose.Schema(
         'EQUAL',
         'EXACT',
         'PERCENTAGE',
-        'ITEMIZED'
+        'ITEMIZED',
+        'SHARES'
       ],
       default: 'EQUAL'
     },
@@ -91,6 +112,15 @@ const expenseSchema = new mongoose.Schema(
       default: undefined,
       required: function () { return this.splitType === 'ITEMIZED'; },
       validate: { validator: function (items) { return this.splitType === 'ITEMIZED' ? items?.length > 0 && items.length <= 100 : !items?.length; }, message: 'Itemized expenses require 1–100 items; Standard expenses cannot contain items.' }
+    },
+
+    adjustments: {
+      type: new mongoose.Schema({
+        tax: { type: new mongoose.Schema({ amount: { type: Number, required: true, min: 0 }, allocation: { type: String, required: true, enum: ['EQUAL', 'PROPORTIONAL'] } }, { _id: false }), default: undefined },
+        tip: { type: new mongoose.Schema({ amount: { type: Number, required: true, min: 0 }, allocation: { type: String, required: true, enum: ['EQUAL', 'PROPORTIONAL'] } }, { _id: false }), default: undefined }
+      }, { _id: false }),
+      default: undefined,
+      validate: { validator: function(value) { return value == null || this.splitType === 'ITEMIZED'; }, message: 'Tax and tip require ITEMIZED.' }
     },
 
     participants: {
