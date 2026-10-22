@@ -504,3 +504,12 @@ prefill descriptions, quantities and line totals, leaving missing fields and
 member assignments for the user. Tax/tip may be separate assigned lines. Negative
 discounts and automatic proportional tax/tip allocation are not implemented.
 Deploy backend support before clients that submit ITEMIZED expenses.
+
+
+## Split by shares (verified 2026-10-22)
+
+- Standard expenses additionally support `splitType: "SHARES"` with `participants: [{ userId, shares }]`. Shares must be numeric positive whole numbers from 1 to 1,000,000. A 2:1 weight divides the total in that ratio. Existing authentication, unique participant, ACTIVE membership and payer checks apply.
+- The server calculates participant amounts from weights, ignoring any submitted participant amounts. Calculations use integer native currency minor units and exact integer arithmetic. Fractional allocations are floored, then remaining units go to the largest fractional remainders, with participant order breaking ties. Amounts always reconcile to the expense total, including JPY and KWD.
+- Responses persist `participants[].shares` alongside calculated amounts. Updates retain omitted weights and recalculate when the total changes. Mobile loads weights when editing and displays them in expense details. Switching split modes replaces the corresponding participant metadata. No migration is required; existing splits retain their behavior.
+- Mobile keeps Standard and Equal as the defaults. By shares includes an icon, defaults each selected member to 1, supports number entry and plus/minus controls, and previews each amount and total shares before saving. Invalid weights block saving.
+- Deploy the backend before using SHARES on mobile. Older backend versions do not support this split type.

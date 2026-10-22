@@ -1,3 +1,4 @@
+const { calculateSharesExpense } = require('./expense.shares');
 const { calculateItemizedExpense } = require('./expense.itemized');
 const Expense = require('./Expense');
 const GroupMember = require('../groups/GroupMember');
@@ -9,6 +10,7 @@ const calculateExpenseParticipants = ({ amount, splitType = 'EQUAL', participant
   const m = money(currency);
   if (!m.valid(amount)) return { error: `Expense amount must be positive with ${m.label}.` };
   const type = typeof splitType === 'string' ? splitType.toUpperCase() : '';
+  if (type === 'SHARES') return calculateSharesExpense({ amount, participants, currency });
   const total = m.units(amount);
   if (type === 'EQUAL') {
     const base = Math.floor(total / participants.length);
@@ -36,7 +38,7 @@ const calculateExpenseParticipants = ({ amount, splitType = 'EQUAL', participant
     }
     return { splitType: type, participants: participants.map((p, i) => ({ userId: p.userId, amount: amounts[i] / m.scale, percentage: p.percentage })) };
   }
-  return { error: 'Invalid split type. Supported types are EQUAL, EXACT, and PERCENTAGE.' };
+  return { error: 'Invalid split type. Supported standard types are EQUAL, EXACT, PERCENTAGE, and SHARES.' };
 };
 
 // -----------------------------

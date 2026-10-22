@@ -14,6 +14,14 @@ const expenseParticipantSchema = new mongoose.Schema(
       min: 0
     },
 
+    shares: {
+      type: Number,
+      min: 1,
+      max: 1000000,
+      default: null,
+      validate: { validator: value => value === null || Number.isInteger(value), message: 'Shares must be whole numbers.' }
+    },
+
      percentage: {
       type: Number,
       min: 0,
@@ -75,7 +83,8 @@ const expenseSchema = new mongoose.Schema(
         'EQUAL',
         'EXACT',
         'PERCENTAGE',
-        'ITEMIZED'
+        'ITEMIZED',
+        'SHARES'
       ],
       default: 'EQUAL'
     },
