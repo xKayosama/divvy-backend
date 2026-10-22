@@ -74,9 +74,23 @@ const expenseSchema = new mongoose.Schema(
       enum: [
         'EQUAL',
         'EXACT',
-        'PERCENTAGE'
+        'PERCENTAGE',
+        'ITEMIZED'
       ],
       default: 'EQUAL'
+    },
+
+    items: {
+      type: [new mongoose.Schema({
+        description: { type: String, required: true, trim: true, maxlength: 200 },
+        quantity: { type: Number, required: true, min: 0.001, max: 1000000 },
+        amount: { type: Number, required: true, min: 0 },
+        memberIds: { type: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }], required: true,
+          validate: { validator: ids => ids.length > 0, message: 'Assign at least one member to every item.' } }
+      }, { _id: false })],
+      default: undefined,
+      required: function () { return this.splitType === 'ITEMIZED'; },
+      validate: { validator: function (items) { return this.splitType === 'ITEMIZED' ? items?.length > 0 && items.length <= 100 : !items?.length; }, message: 'Itemized expenses require 1–100 items; Standard expenses cannot contain items.' }
     },
 
     participants: {

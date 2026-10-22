@@ -1,3 +1,4 @@
+const { calculateItemizedExpense } = require('./expense.itemized');
 const Expense = require('./Expense');
 const GroupMember = require('../groups/GroupMember');
 
@@ -52,7 +53,8 @@ const createExpense = async (req, res) => {
       category,
       paidBy,
       splitType,
-      participants,
+      participants: suppliedParticipants,
+      items,
       date,
       notes
     } = req.body;
@@ -85,6 +87,13 @@ const createExpense = async (req, res) => {
         message: 'paidBy is required.'
       });
     }
+
+    const isItemized = typeof splitType === 'string' && splitType.toUpperCase() === 'ITEMIZED';
+    if (isItemized && suppliedParticipants !== undefined) return res.status(400).json({ success: false, message: 'Itemized participants are calculated from items; omit participants.' });
+    if (!isItemized && items !== undefined && (!Array.isArray(items) || items.length)) return res.status(400).json({ success: false, message: 'Items require the ITEMIZED split type.' });
+    const itemizedResult = isItemized ? calculateItemizedExpense({ amount, items, currency: req.group?.currency }) : null;
+    if (itemizedResult?.error) return res.status(400).json({ success: false, message: itemizedResult.error });
+    const participants = isItemized ? itemizedResult.participants : suppliedParticipants;
 
     if (
       !participants ||
@@ -168,7 +177,7 @@ const createExpense = async (req, res) => {
     // Calculate split
     // -----------------------------
 
-    const splitResult =
+    const splitResult = itemizedResult ??
       calculateExpenseParticipants({
         amount: normalizedAmount,
         currency: req.group?.currency,
@@ -198,6 +207,7 @@ const createExpense = async (req, res) => {
       paidBy,
       splitType: splitResult.splitType,
       participants: splitResult.participants,
+      ...(isItemized ? { items: splitResult.items } : {}),
       date: date || new Date(),
       notes: notes || ''
     });
@@ -562,7 +572,8 @@ const updateExpense = async (
       category,
       paidBy,
       splitType,
-      participants,
+      participants: suppliedParticipants,
+      items,
       date,
       notes
     } = req.body;
@@ -633,10 +644,13 @@ const updateExpense = async (
         ? splitType
         : expense.splitType;
 
-    const updatedParticipants =
-      participants !== undefined
-        ? participants
-        : expense.participants;
+    const isItemized = typeof updatedSplitType === 'string' && updatedSplitType.toUpperCase() === 'ITEMIZED';
+    if (isItemized && suppliedParticipants !== undefined) return res.status(400).json({ success: false, message: 'Itemized participants are calculated from items; omit participants.' });
+    if (!isItemized && items !== undefined && (!Array.isArray(items) || items.length)) return res.status(400).json({ success: false, message: 'Items require the ITEMIZED split type.' });
+    const itemizedResult = isItemized ? calculateItemizedExpense({ amount: updatedAmount, items: items !== undefined ? items : expense.items, currency: group.currency }) : null;
+    if (itemizedResult?.error) return res.status(400).json({ success: false, message: itemizedResult.error });
+    const updatedParticipants = isItemized ? itemizedResult.participants :
+      suppliedParticipants !== undefined ? suppliedParticipants : expense.participants;
 
     const updatedDate =
       date !== undefined
@@ -772,7 +786,7 @@ const updateExpense = async (
     // Calculate split
     // -----------------------------
 
-    const splitResult =
+    const splitResult = itemizedResult ??
       calculateExpenseParticipants({
         amount: updatedAmount,
         currency: group.currency,
@@ -811,6 +825,10 @@ const updateExpense = async (
 
     expense.participants =
       splitResult.participants;
+
+    // Explicit conversion to Standard clears the persisted itemization.
+    if (isItemized) expense.items = splitResult.items;
+    else expense.items = undefined;
 
     expense.date =
       updatedDate;
