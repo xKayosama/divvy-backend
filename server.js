@@ -5,6 +5,8 @@ require('dotenv').config();
 const app = require('./src/app');
 const connectDatabase = require('./src/config/database');
 
+const { startRecurringExpenseWorker } = require('./src/modules/expenses/expense.recurrence');
+
 const { startRecurringBillWorker } = require('./src/modules/bills/bill.recurrence');
 
 const mongoose = require('mongoose');
@@ -15,6 +17,7 @@ const startServer = async () => {
   await connectDatabase();
 
   const stopWorker = await startRecurringBillWorker();
+  const stopExpenseWorker = await startRecurringExpenseWorker();
 
   const server = app.listen(port);
   server.once('listening', () => {
@@ -32,6 +35,7 @@ const startServer = async () => {
     shuttingDown = true;
     app.locals.shuttingDown = true;
     stopWorker();
+    stopExpenseWorker();
     const deadline = setTimeout(() => process.exit(1), 10000);
     deadline.unref();
     server.close(async () => {

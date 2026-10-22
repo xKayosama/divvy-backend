@@ -1,3 +1,4 @@
+const { createSchedule, unlocked } = require('./expense.recurrence');
 const { calculateSharesExpense } = require('./expense.shares');
 const { calculateItemizedExpense } = require('./expense.itemized');
 const Expense = require('./Expense');
@@ -201,7 +202,11 @@ const createExpense = async (req, res) => {
     // Create expense
     // -----------------------------
 
+    let recurring;
+    try { recurring = createSchedule(req.body.recurring,date || new Date()); }
+    catch(error) { return res.status(400).json({success:false,message:error.message}); }
     const expense = await Expense.create({
+      ...(recurring ? {recurring} : {}),
       groupId,
       description,
       amount: normalizedAmount,
@@ -587,7 +592,7 @@ const updateExpense = async (
     // Find expense
     // -----------------------------
 
-    const expense =
+    let expense =
       await Expense.findById(
         expenseId
       );
@@ -622,6 +627,9 @@ const updateExpense = async (
     }
 
     // -----------------------------
+    if (req.body.recurring !== undefined) return res.status(400).json({success:false,message:'Manage the schedule from expense details.'});
+    if (expense.recurring && req.body.date !== undefined && new Date(req.body.date).getTime() !== new Date(expense.date).getTime()) return res.status(400).json({success:false,message:'The first expense date anchors this schedule and cannot change.'});
+
     // Existing values
     // -----------------------------
 
@@ -847,7 +855,14 @@ const updateExpense = async (
     expense.notes =
       updatedNotes;
 
-    await expense.save();
+    if (expense.recurring) {
+      const fields = {};
+      for (const key of ['description','amount','category','paidBy','splitType','participants','items','adjustments','date','notes']) fields[key] = expense.toObject()[key];
+      const unset = {};
+      for (const key of ['items','adjustments']) if (fields[key] === undefined) { delete fields[key]; unset[key]=1; }
+      expense = await Expense.findOneAndUpdate({_id:expense._id,...unlocked(new Date())},{$set:fields,...(Object.keys(unset).length ? {$unset:unset} : {})},{new:true,runValidators:true});
+      if(!expense) return res.status(409).json({success:false,message:'Schedule is processing. Try saving again shortly.'});
+    } else await expense.save();
 
     // -----------------------------
     // Populate response
@@ -936,9 +951,13 @@ const deleteExpense = async (
       });
     }
 
-    await Expense.findByIdAndDelete(
-      expenseId
-    );
+    if(expense.recurrenceSourceId) {
+      const source = await Expense.findById(expense.recurrenceSourceId);
+      if(source?.recurring && source.recurring.nextNumber <= expense.occurrenceNumber) return res.status(409).json({success:false,message:'This occurrence is still processing. Try again shortly.'});
+    }
+    if(expense.recurring) {
+      if(!await Expense.findOneAndDelete({_id:expenseId,...unlocked(new Date())})) return res.status(409).json({success:false,message:'Schedule is processing. Try deleting again shortly.'});
+    } else await Expense.findByIdAndDelete(expenseId);
 
     return res.status(200).json({
       code: 200,
