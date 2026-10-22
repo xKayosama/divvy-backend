@@ -463,3 +463,44 @@ screens for review. Currency changes on groups with expenses, bills or
 settlements return 409 to prevent reinterpreting recorded amounts. Mobile
 settings continue to show currency read-only. Deploy backend and mobile changes
 together; older clients restrict entry/display to two decimals.
+
+
+### Itemized expenses
+
+Standard EQUAL/EXACT/PERCENTAGE expenses remain the default. Create an itemized
+expense using the existing authenticated group expense endpoint:
+
+```json
+{
+  "description": "Dinner",
+  "amount": 15,
+  "paidBy": "ACTIVE_USER_ID",
+  "splitType": "ITEMIZED",
+  "items": [
+    { "description": "Pizza", "quantity": 2, "amount": 10, "memberIds": ["USER_A", "USER_B"] },
+    { "description": "Drink", "quantity": 1, "amount": 5, "memberIds": ["USER_A"] }
+  ]
+}
+```
+
+Use actual active member ObjectIds. Omit `participants`; the server derives them
+from item assignments (USER_A owes 10 and USER_B owes 5 in this example).
+`amount` on an item is the full line total for all quantity. Quantity is metadata,
+not a multiplier. Quantity defaults to 1, must be positive, <=1,000,000 and have
+up to 3 decimals. Require 1–100 items, trimmed descriptions of 1–200 characters,
+nonnegative safe amounts matching the currency precision, and at least one
+unique active member per line. Line totals must equal the positive expense total.
+Each line splits equally, with its rounding remainder assigned to its first
+member, then aggregates into the stored participant shares. Invalid itemization
+returns 400 before writes; client-supplied participants are rejected.
+
+GET/create/update expense responses preserve `items`. Partial updates retain
+itemized mode/items and recalculate shares. Explicitly selecting a standard split
+and sending its participants clears the old items. Existing standard requests
+need no changes. No migration is required. Existing dashboards, balances and
+settlement suggestions use the derived shares without counting items again.
+Receipt scanning still only extracts data for review; the mobile editor can
+prefill descriptions, quantities and line totals, leaving missing fields and
+member assignments for the user. Tax/tip may be separate assigned lines. Negative
+discounts and automatic proportional tax/tip allocation are not implemented.
+Deploy backend support before clients that submit ITEMIZED expenses.
