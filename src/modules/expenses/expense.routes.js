@@ -1,4 +1,5 @@
 const express = require('express');
+const { updateRecurrence } = require('./expense.recurrence');
 
 const {
   createExpense,
@@ -44,5 +45,7 @@ router.delete(
   protect,
   deleteExpense
 );
+
+router.patch('/:expenseId/recurrence',protect,updateRecurrence);
 
 module.exports = router;

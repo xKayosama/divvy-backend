@@ -137,6 +137,23 @@ const expenseSchema = new mongoose.Schema(
       default: Date.now
     },
 
+    recurring: {
+      type: new mongoose.Schema({
+        frequency: {type:String,enum:['WEEKLY','MONTHLY','YEARLY'],required:true},
+        anchor:{type:Date,required:true},
+        endDate:{type:Date,default:null},
+        paused:{type:Boolean,default:false},
+        nextNumber:{type:Number,required:true,min:1},
+        nextDate:{type:Date,default:null},
+        lastError:{type:String,default:''},
+        lockToken:{type:String,select:false},
+        lockedUntil:{type:Date,select:false}
+      },{_id:false}),
+      default:undefined
+    },
+    recurrenceSourceId:{type:mongoose.Schema.Types.ObjectId,ref:'Expense',default:null},
+    occurrenceNumber:{type:Number,min:1},
+
     notes: {
       type: String,
       trim: true,
@@ -147,5 +164,8 @@ const expenseSchema = new mongoose.Schema(
     timestamps: true
   }
 );
+
+expenseSchema.index({recurrenceSourceId:1,occurrenceNumber:1},{unique:true,partialFilterExpression:{recurrenceSourceId:{$type:'objectId'},occurrenceNumber:{$type:'number'}}});
+expenseSchema.index({'recurring.paused':1,'recurring.nextDate':1});
 
 module.exports = mongoose.model('Expense', expenseSchema);
