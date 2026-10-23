@@ -1,3 +1,4 @@
+const {recordActivity, groupSnapshot, changesBetween}=require('../activity/activity.service');
 const groupIcons = new Set(require('./group.icons.json'));
 const Settlement = require('../settlements/Settlement');
 const User = require("../users/User");
@@ -356,6 +357,7 @@ const updateGroup = async (req, res) => {
       });
     }
 
+    const activityBefore = groupSnapshot(group);
     if (icon !== undefined && !groupIcons.has(icon)) return res.status(400).json({ success: false, message: 'Choose a supported group icon.' });
 
     if (name !== undefined) {
@@ -384,6 +386,8 @@ const updateGroup = async (req, res) => {
     if (icon !== undefined) group.icon = icon;
 
     await group.save();
+    const activityChanges = changesBetween(activityBefore, groupSnapshot(group));
+    if(Object.keys(activityChanges).length) await recordActivity({groupId:group._id,actor:req.user._id,action:'GROUP_UPDATED',targetId:group._id,label:group.name,changes:activityChanges});
 
     return res.status(200).json({
       code: 200,
@@ -430,6 +434,7 @@ const deleteGroup = async (req, res) => {
     await Group.findByIdAndDelete(groupId).setOptions({withDeleted:true});
 
     // Remove group memberships
+    await require('../activity/Activity').deleteMany({groupId});
     await GroupMember.deleteMany({
       groupId,
     });

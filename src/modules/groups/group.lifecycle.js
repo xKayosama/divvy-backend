@@ -49,6 +49,7 @@ function activeRecordGroup(Model,param){return async(req,res,next)=>{
   if(!record)return next();
   const group=await Group.findById(record.groupId);
   if(!group || group.deletedAt)return res.status(404).json({success:false,message:'Group not found or deleted.'});
+  req.group=group;
   next();
  }catch(error){if(error.name==='CastError')return res.status(404).json({success:false,message:'Record not found.'});console.error('Record group access:',error);return res.status(500).json({success:false,message:'Could not check group access.'});}
 };}

@@ -1,3 +1,4 @@
+const {recordActivity}=require('../activity/activity.service');
 const mongoose=require('mongoose');
 const {createHash}=require('node:crypto');
 const Bill=require('./Bill');
@@ -28,6 +29,7 @@ async function finishPayment(bill){
  const paid=await Bill.findOneAndUpdate({_id:bill._id,expenseId:bill.expenseId,status:{$ne:'PAID'}},{$set:{status:'PAID',paidBy:payment.paidBy,paidAt:payment.paidAt}},{new:true,runValidators:true});
  const result=paid||await Bill.findById(bill._id);
  if(!result || result.status!=='PAID' || String(result.expenseId)!==String(expense._id))throw Error('Bill payment checkpoint not confirmed.');
+ await recordActivity({groupId:bill.groupId,actor:payment.recordedBy || null,action:'BILL_PAID',targetId:bill._id,label:payment.description,snapshot:{amount:payment.amount,currency:payment.currency,paidBy:String(payment.paidBy),splitType:payment.splitType,expenseId:String(bill.expenseId)},occurredAt:payment.paidAt,eventKey:`bill-paid:${bill._id}`});
  return {bill:result,expense};
 }
 async function payBill(req,res){
@@ -56,7 +58,7 @@ async function payBill(req,res){
    const active=await Member.find({groupId:bill.groupId,status:'ACTIVE',userId:{$in:ids}});
    if(ids.some(id=>!active.some(member=>String(member.userId)===id)))return res.status(400).json({success:false,message:'Payer and all participants must be active group members.'});
    const expenseId=new mongoose.Types.ObjectId();
-   const payment={...split,description:bill.name,amount:bill.amount,category:categoryMap[bill.category]||'OTHERS',notes:bill.notes||'',paidAt:new Date(),fingerprint:fingerprint(split)};
+   const payment={...split,recordedBy:req.user._id,currency:group.currency,description:bill.name,amount:bill.amount,category:categoryMap[bill.category]||'OTHERS',notes:bill.notes||'',paidAt:new Date(),fingerprint:fingerprint(split)};
    await new Expense({_id:expenseId,billId:bill._id,groupId:bill.groupId,...payment,date:payment.paidAt}).validate();
    const claimed=await Bill.findOneAndUpdate({_id:bill._id,status:{$ne:'PAID'},expenseId:null,...(bill.updatedAt?{updatedAt:bill.updatedAt}:{})},{$set:{expenseId,payment}},{new:true,runValidators:true}).select('+payment');
    if(!claimed){

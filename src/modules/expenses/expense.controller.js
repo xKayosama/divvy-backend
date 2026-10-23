@@ -1,3 +1,4 @@
+const { recordActivity, expenseSnapshot, changesBetween } = require('../activity/activity.service');
 const { createSchedule, unlocked } = require('./expense.recurrence');
 const { calculateItemizedExpense } = require('./expense.itemized');
 const Expense = require('./Expense');
@@ -190,6 +191,8 @@ const createExpense = async (req, res) => {
     // -----------------------------
     // Populate response
     // -----------------------------
+
+    await recordActivity({groupId: expense.groupId, actor: req.user._id, action: 'EXPENSE_ADDED', targetId: expense._id, label: expense.description, snapshot: expenseSnapshot(expense, req.group?.currency), eventKey: `expense-added:${expense._id}`});
 
     await expense.populate([
       {
@@ -789,6 +792,7 @@ const updateExpense = async (
     // Update expense
     // -----------------------------
 
+    const activityBefore = expenseSnapshot(expense);
     expense.description =
       updatedDescription;
 
@@ -830,6 +834,8 @@ const updateExpense = async (
       expense = await Expense.findOneAndUpdate({_id:expense._id,...unlocked(new Date())},{$set:fields,...(Object.keys(unset).length ? {$unset:unset} : {})},{new:true,runValidators:true});
       if(!expense) return res.status(409).json({success:false,message:'Schedule is processing. Try saving again shortly.'});
     } else await expense.save();
+    const activityChanges = changesBetween(activityBefore, expenseSnapshot(expense));
+    if(Object.keys(activityChanges).length) await recordActivity({groupId: expense.groupId, actor: req.user._id, action: 'EXPENSE_EDITED', targetId: expense._id, label: expense.description, changes: activityChanges, snapshot: expenseSnapshot(expense, group.currency)});
 
     // -----------------------------
     // Populate response
@@ -925,7 +931,8 @@ const deleteExpense = async (
     }
     if(expense.recurring) {
       if(!await Expense.findOneAndDelete({_id:expenseId,...unlocked(new Date())})) return res.status(409).json({success:false,message:'Schedule is processing. Try deleting again shortly.'});
-    } else await Expense.findByIdAndDelete(expenseId);
+    } else if (!await Expense.findByIdAndDelete(expenseId)) return res.status(404).json({success:false,message:'Expense already deleted.'});
+    await recordActivity({groupId: expense.groupId, actor: req.user._id, action: 'EXPENSE_DELETED', targetId: expense._id, label: expense.description, snapshot: expenseSnapshot(expense, req.group?.currency), eventKey: `expense-deleted:${expense._id}`});
 
     return res.status(200).json({
       code: 200,

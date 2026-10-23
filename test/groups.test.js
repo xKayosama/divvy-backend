@@ -51,7 +51,7 @@ test('Group create, list, read, update, delete preserve owner membership and cas
   request = req(); request.body = { name: ' Event ', currency: ' usd ' }; res = response(); await groups.updateGroup(request, res); assert.equal(record.name, 'Event'); assert.equal(record.currency, 'USD');
   request.user._id = 'b'; res = response(); await groups.updateGroup(request, res); assert.equal(res.statusCode, 403);
   mock.method(Group, 'findByIdAndDelete', id => {assert.equal(id,'g');return query(null);});
-  for (const Model of [Member, Expense, Bill, require('../src/modules/settlements/Settlement')]) mock.method(Model, 'deleteMany', async filter => assert.deepEqual(filter, { groupId: 'g' }));
+  for (const Model of [Member, Expense, Bill, require('../src/modules/settlements/Settlement'), require('../src/modules/activity/Activity')]) mock.method(Model, 'deleteMany', async filter => assert.deepEqual(filter, { groupId: 'g' }));
   res = response(); await groups.deleteGroup(req(), res); assert.equal(res.statusCode, 200);
 });
 
@@ -157,7 +157,7 @@ test('expense pagination, category, inclusive date range and sort remain scoped 
 });
 test('expense resource read, update and delete authorize using groupId', async () => {
   const record = { groupId: 'g', description: 'Meal', amount: 10, category: 'FOOD', paidBy: 'a', splitType: 'EXACT', participants: [{ userId: 'a', amount: 10 }], save: async () => {}, populate: async () => {} };
-  allowExpenseMembers(); mock.method(Expense, 'findById', () => query(record)); mock.method(Expense, 'findByIdAndDelete', async () => {});
+  allowExpenseMembers(); mock.method(Expense, 'findById', () => query(record)); mock.method(Expense, 'findByIdAndDelete', async () => record);
   const request = req(); request.params.expenseId = 'e';
   for (const action of [expenses.getExpenseById, expenses.updateExpense, expenses.deleteExpense]) { const res = response(); await action(request, res); assert.equal(res.statusCode, 200); }
   mock.method(Member, 'findOne', async () => null);

@@ -27,9 +27,10 @@ function fixture(overrides={}) {
  mock.method(Expense,'find',filter=>({cursor:async function*(){if(matches(source,filter))yield source;}}));
  mock.method(Expense,'findOneAndUpdate',(filter,update)=>{if(!matches(source,filter))return query(null);apply(source,update);return query(source);});
  mock.method(Expense,'findById',async id=>String(id)===sourceId?source:null);
+ mock.method(Expense,'findOne',async key=>generated.get(key.occurrenceNumber) || null);
  mock.method(Expense,'exists',async filter=>filter._id?matches(source,filter):generated.has(filter.occurrenceNumber));
  mock.method(Expense,'updateOne',async(filter,update,options)=>{
-  if(update.$setOnInsert){assert.equal(options.upsert,true);assert.equal(options.runValidators,true);if(!generated.has(filter.occurrenceNumber))generated.set(filter.occurrenceNumber,update.$setOnInsert);return {modifiedCount:1};}
+  if(update.$setOnInsert){assert.equal(options.upsert,true);assert.equal(options.runValidators,true);if(!generated.has(filter.occurrenceNumber))generated.set(filter.occurrenceNumber,{_id:new (require('mongoose').Types.ObjectId)(),...update.$setOnInsert});return {modifiedCount:1};}
   if(matches(source,filter)){apply(source,update);return {modifiedCount:1};}return {modifiedCount:0};
  });
  mock.method(Group,'findById',async()=>({currency:'PHP'}));
@@ -167,4 +168,12 @@ test('duplicate-key races are accepted only when the exact occurrence exists',as
 test('soft-deleted groups pause recurring expense generation without writing new expenses',async()=>{
  const f=fixture();mock.method(Group,'findById',async()=>({currency:'PHP',deletedAt:new Date()}));
  await f.run({now:new Date('2026-10-23')});assert.equal(f.generated.size,0);assert.equal(f.source.recurring.paused,true);
+});
+
+test('recurring entries log System activity with the persisted occurrence identity across checkpoint retries',async()=>{
+ const events=[];mock.method(require('../src/modules/activity/Activity'),'updateOne',async(filter,update)=>{events.push({filter,event:update.$setOnInsert});});
+ const f=fixture();const write=Expense.updateOne;let fail=true;
+ mock.method(Expense,'updateOne',async(...args)=>{if(args[1].$set?.['recurring.nextNumber'] && fail){fail=false;throw Error('interrupted');}return write(...args);});
+ await f.run({now:new Date('2026-02-28')});await f.run({now:new Date('2026-02-28')});
+ assert.equal(events.length,2);assert.equal(events[0].filter._id,events[1].filter._id);assert.equal(events[0].event.actor,null);assert.equal(events[0].event.snapshot.automatic,true);assert.equal(String(events[0].event.targetId),String(f.generated.get(1)._id));
 });

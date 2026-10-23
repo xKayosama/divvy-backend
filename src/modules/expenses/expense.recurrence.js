@@ -1,3 +1,4 @@
+const {recordActivity,expenseSnapshot,changesBetween}=require('../activity/activity.service');
 const { randomUUID } = require('node:crypto');
 const Expense = require('./Expense');
 const Member = require('../groups/GroupMember');
@@ -70,6 +71,8 @@ async function generateRecurringExpenses({now = new Date(), maxPerSource = 120, 
         } catch(error) {
           if(error.code!==11000 || !await Expense.exists(key)) throw error;
         }
+        const generated = await Expense.findOne(key);
+        if (generated) await recordActivity({groupId:source.groupId,actor:null,action:'EXPENSE_ADDED',targetId:generated._id,label:generated.description,snapshot:{...expenseSnapshot(generated,group.currency),automatic:true},occurredAt:generated.createdAt || new Date(),eventKey:`expense-added:${generated._id}`});
         const nextNumber=schedule.nextNumber+1;
         const next=occurrenceDate(schedule.anchor,schedule.frequency,nextNumber);
         await Expense.updateOne({_id:source._id,'recurring.lockToken':token,'recurring.nextNumber':schedule.nextNumber},{$set:{'recurring.nextNumber':nextNumber,'recurring.nextDate':withinEnd(next,schedule.endDate)?next:null,'recurring.lastError':''}});
@@ -91,6 +94,7 @@ async function updateRecurrence(req,res) {
     const body=req.body;
     if(!body || Array.isArray(body) || !Object.keys(body).length || Object.keys(body).some(key=>!['paused','endDate'].includes(key)) || (body.paused!==undefined && typeof body.paused!=='boolean')) return res.status(400).json({success:false,message:'Supply paused and/or endDate.'});
     const now=new Date();
+    const scheduleBefore={paused:source.recurring.paused,endDate:source.recurring.endDate || null};
     const schedule=source.recurring.toObject ? source.recurring.toObject() : {...source.recurring};
     if(body.endDate!==undefined) schedule.endDate=endDate(body.endDate);
     if(schedule.endDate && new Date(schedule.endDate)<new Date(schedule.anchor)) throw new Error('End date must be on or after the first expense date.');
@@ -103,6 +107,8 @@ async function updateRecurrence(req,res) {
     // Also compare progress: a worker finishing while this request validates must not be rewound.
     const updated=await Expense.findOneAndUpdate({_id:source._id,'recurring.nextNumber':source.recurring.nextNumber,...unlocked(now)},{$set:{recurring:schedule}},{new:true,runValidators:true});
     if(!updated) return res.status(409).json({success:false,message:'Schedule is processing or changed. Refresh and try again.'});
+    const scheduleChanges=changesBetween(scheduleBefore,{paused:schedule.paused,endDate:schedule.endDate || null});
+    if(Object.keys(scheduleChanges).length) await recordActivity({groupId:source.groupId,actor:req.user._id,action:'EXPENSE_EDITED',targetId:source._id,label:source.description,changes:scheduleChanges});
     await updated.populate([{path:'paidBy',select:'firstName lastName email avatar'},{path:'participants.userId',select:'firstName lastName email avatar'}]);
     return res.json({success:true,data:{expense:updated}});
   } catch(error) {

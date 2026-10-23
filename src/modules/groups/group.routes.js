@@ -17,6 +17,8 @@ const { groupAccess } = require('./groupAccess.middleware');
 
 const router = express.Router();
 
+router.get('/:id/activity', protect, groupAccess, require('../activity/activity.controller').getActivity);
+
 router.post('/', protect, createGroup);
 
 router.get('/', protect, getMyGroups);
