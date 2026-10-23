@@ -11,7 +11,7 @@ afterEach(() => mock.restoreAll());
 function response() { return { statusCode: 200, status(value) { this.statusCode = value; return this; }, json(value) { this.body = value; return this; } }; }
 function setup(status) {
   const bill = { _id: 'b', groupId: 'g', name: 'Rent', amount: 20, category: 'RENT', dueDate: new Date('2026-10-20'), status, isRecurring: false, recurrence: null, paidBy: null, notes: '', populate: async () => {} };
-  mock.method(Bill, 'findById', async () => bill);
+  mock.method(Bill, 'findById', () => ({select(){return Promise.resolve(bill);},then(resolve,reject){return Promise.resolve(bill).then(resolve,reject);}}));
   mock.method(Member, 'findOne', async () => ({}));
   return bill;
 }
@@ -35,7 +35,7 @@ for (const action of ['updateBill', 'deleteBill']) {
       const bill = setup(status);
       const method = action === 'updateBill' ? 'findOneAndUpdate' : 'findOneAndDelete';
       mock.method(Bill, method, async (filter, update, options) => {
-        assert.deepEqual(filter, { _id: 'b', status: { $ne: 'PAID' } });
+        assert.deepEqual(filter, { _id: 'b', status: { $ne: 'PAID' }, expenseId: null });
         if (update) { assert.equal(update.$set.name, 'Updated'); assert.equal(options.runValidators, true); }
         return bill;
       });
@@ -50,11 +50,11 @@ for (const action of ['updateBill', 'deleteBill']) {
     assert.equal(res.statusCode, 409);
   });
 }
-test('an unpaid bill can still be marked paid', async () => {
-  const bill = setup('PENDING');
-  mock.method(Bill, 'findOneAndUpdate', async (_filter, update) => { assert.equal(update.$set.status, 'PAID'); assert.equal(update.$set.paidBy, 'u'); return bill; });
-  const res = response(); await controller.updateBill({ params: { billId: 'b' }, user: { _id: 'u' }, body: { status: 'PAID', paidBy: 'u' } }, res);
-  assert.equal(res.statusCode, 200);
+test('marking a bill paid requires explicit split settings', async () => {
+  setup('PENDING');
+  mock.method(Bill,'findOneAndUpdate',()=>assert.fail('incomplete payment must not write'));
+  const res=response();await controller.updateBill({params:{billId:'b'},user:{_id:'u'},body:{status:'PAID',paidBy:'u'}},res);
+  assert.equal(res.statusCode,400);
 });
 
 beforeEach(() => { mock.method(Group, 'findById', async () => ({ currency: 'PHP' })); });

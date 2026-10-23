@@ -1,4 +1,5 @@
 const express = require('express');
+const {softDeleteGroup,restoreGroup,deletedGroups,ownerIncludingDeleted}=require('./group.lifecycle');
 
 const {
   createGroup,
@@ -19,6 +20,9 @@ const router = express.Router();
 router.post('/', protect, createGroup);
 
 router.get('/', protect, getMyGroups);
+router.get('/deleted',protect,deletedGroups);
+router.post('/:id/soft-delete',protect,ownerIncludingDeleted,softDeleteGroup);
+router.post('/:id/restore',protect,ownerIncludingDeleted,restoreGroup);
 
 router.get(
   '/:id',
@@ -58,7 +62,7 @@ router.put(
 router.delete(
   '/:id',
   protect,
-  groupAccess,
+  ownerIncludingDeleted,
   deleteGroup
 );
 

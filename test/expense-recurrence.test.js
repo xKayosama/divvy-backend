@@ -163,3 +163,8 @@ test('duplicate-key races are accepted only when the exact occurrence exists',as
  });
  await f.run({now:new Date('2026-02-28')});assert.equal(f.generated.size,1);assert.equal(f.errors.length,0);assert.equal(f.source.recurring.nextNumber,2);
 });
+
+test('soft-deleted groups pause recurring expense generation without writing new expenses',async()=>{
+ const f=fixture();mock.method(Group,'findById',async()=>({currency:'PHP',deletedAt:new Date()}));
+ await f.run({now:new Date('2026-10-23')});assert.equal(f.generated.size,0);assert.equal(f.source.recurring.paused,true);
+});

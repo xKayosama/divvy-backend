@@ -151,6 +151,7 @@ const expenseSchema = new mongoose.Schema(
       },{_id:false}),
       default:undefined
     },
+    billId:{type:mongoose.Schema.Types.ObjectId,ref:'Bill',default:null},
     recurrenceSourceId:{type:mongoose.Schema.Types.ObjectId,ref:'Expense',default:null},
     occurrenceNumber:{type:Number,min:1},
 
@@ -165,6 +166,7 @@ const expenseSchema = new mongoose.Schema(
   }
 );
 
+expenseSchema.index({billId:1},{unique:true,partialFilterExpression:{billId:{$type:'objectId'}}});
 expenseSchema.index({recurrenceSourceId:1,occurrenceNumber:1},{unique:true,partialFilterExpression:{recurrenceSourceId:{$type:'objectId'},occurrenceNumber:{$type:'number'}}});
 expenseSchema.index({'recurring.paused':1,'recurring.nextDate':1});
 

@@ -52,7 +52,7 @@ async function generateRecurringExpenses({now = new Date(), maxPerSource = 120, 
         const group = await Group.findById(source.groupId);
         const ids = [...new Set([String(source.paidBy),...source.participants.map(p=>String(p.userId))])];
         const active = await Member.find({groupId:source.groupId,status:'ACTIVE',userId:{$in:ids}});
-        const validMembers = group && ids.every(id=>active.some(member=>String(member.userId)===id));
+        const validMembers = group && !group.deletedAt && ids.every(id=>active.some(member=>String(member.userId)===id));
         if (!validMembers) {
           await Expense.updateOne({_id:source._id,'recurring.lockToken':token},{$set:{'recurring.paused':true,'recurring.lastError':'Schedule paused: payer or assigned members are unavailable. Review the expense before resuming.'}});
           break;

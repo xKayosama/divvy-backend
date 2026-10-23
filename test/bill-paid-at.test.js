@@ -14,7 +14,7 @@ afterEach(() => { mock.restoreAll(); mock.timers.reset(); });
 function setup(bill) {
   mock.timers.enable({ apis: ['Date'], now });
   mock.method(Member, 'findOne', async () => ({}));
-  mock.method(Bill, 'findById', async () => bill);
+  mock.method(Bill, 'findById', () => ({select(){return Promise.resolve(bill);},then(resolve,reject){return Promise.resolve(bill).then(resolve,reject);}}));
 }
 
 test('schema stores a nullable Date; legacy paid records serialize as unknown without guessing', () => {
@@ -24,23 +24,13 @@ test('schema stores a nullable Date; legacy paid records serialize as unknown wi
   assert.equal(presentBill({ ...record('PAID'), updatedAt: now }).paidAt, null);
 });
 
-for (const status of ['PENDING', 'OVERDUE']) {
-  test(`marking ${status} paid writes server timestamp atomically and ignores supplied paidAt`, async () => {
-    const bill = record(status); setup(bill);
-    mock.method(Bill, 'findOneAndUpdate', async (filter, update, options) => {
-      assert.deepEqual(filter, { _id: 'b', status: { $ne: 'PAID' } });
-      assert.equal(update.$set.status, 'PAID');
-      assert.equal(update.$set.paidBy, 'u');
-      assert.equal(update.$set.paidAt.toISOString(), now.toISOString());
-      assert.equal(options.new, true);
-      assert.equal(options.runValidators, true);
-      return { ...bill, ...update.$set };
-    });
-    const res = response();
-    await updateBill(request({ status: 'PAID', paidBy: 'u', paidAt: '2000-01-01' }), res);
-    assert.equal(res.statusCode, 200);
-    assert.equal(res.body.data.bill.paidAt.toISOString(), now.toISOString());
-  });
+for(const status of ['PENDING','OVERDUE']) {
+ test(`legacy ${status} paid calls require split confirmation and cannot write a timestamp`,async()=>{
+  const bill=record(status);setup(bill);
+  mock.method(Bill,'findOneAndUpdate',()=>assert.fail('missing split must not write'));
+  const res=response();await updateBill(request({status:'PAID',paidBy:'u',paidAt:'2000-01-01'}),res);
+  assert.equal(res.statusCode,400);assert.equal(bill.paidAt,undefined);
+ });
 }
 
 test('ordinary unpaid edits cannot attach a payment timestamp', async () => {
@@ -55,19 +45,14 @@ test('ordinary unpaid edits cannot attach a payment timestamp', async () => {
   assert.equal(res.body.data.bill.paidAt, null);
 });
 
-for (const status of ['PENDING', 'PAID']) {
-  test(`creating ${status} uses server-owned timestamp`, async () => {
-    setup(record());
-    mock.method(Bill, 'create', async fields => {
-      assert.equal(fields.paidAt?.toISOString() ?? null, status === 'PAID' ? now.toISOString() : null);
-      return { ...fields, async populate() {} };
-    });
-    const res = response();
-    await createBill(request({ name: 'Rent', amount: 20, dueDate: '2026-10-20', paidBy: 'u', status, paidAt: '2000-01-01' }), res);
-    assert.equal(res.statusCode, 201);
-    assert.equal(res.body.data.bill.paidAt?.toISOString() ?? null, status === 'PAID' ? now.toISOString() : null);
-  });
-}
+test('creating an unpaid bill ignores client payment timestamps',async()=>{
+ setup(record());mock.method(Bill,'create',async fields=>{assert.equal(fields.paidAt,null);return {...fields,async populate(){}};});
+ const res=response();await createBill(request({name:'Rent',amount:20,dueDate:'2026-10-20',status:'PENDING',paidAt:now}),res);assert.equal(res.statusCode,201);assert.equal(res.body.data.bill.paidAt,null);
+});
+test('directly paid creation requires a separate confirmed split and cannot bypass linked expense recording',async()=>{
+ setup(record());mock.method(Bill,'create',()=>assert.fail('direct paid creation must not write'));
+ const res=response();await createBill(request({name:'Rent',amount:20,dueDate:'2026-10-20',status:'PAID',paidBy:'u'}),res);assert.equal(res.statusCode,400);
+});
 
 test('repeated payment cannot overwrite the original timestamp', async () => {
   const original = new Date('2026-10-10T10:00:00Z');
@@ -79,12 +64,12 @@ test('repeated payment cannot overwrite the original timestamp', async () => {
   assert.equal(bill.paidAt, original);
 });
 
-test('concurrent payment rejects conditional write instead of overwriting timestamp', async () => {
+test('missing split cannot bypass payment recording even during a concurrent transition', async () => {
   setup(record());
   mock.method(Bill, 'findOneAndUpdate', async () => null);
   const res = response();
   await updateBill(request({ status: 'PAID', paidBy: 'u' }), res);
-  assert.equal(res.statusCode, 409);
+  assert.equal(res.statusCode, 400);
 });
 
 test('unauthorized payment does not write a timestamp', async () => {

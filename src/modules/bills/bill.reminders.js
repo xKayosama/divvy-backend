@@ -22,7 +22,8 @@ function effectiveStatus(bill, now = new Date()) {
 // Serialize without mutating Mongoose documents or persisting derived status.
 function presentBill(bill, now = new Date()) {
   const record = typeof bill.toObject === 'function' ? bill.toObject() : { ...bill };
-  return { ...record, paidAt: record.paidAt ?? null, status: effectiveStatus(record, now) };
+  delete record.payment;
+  return { ...record, paymentPending: !!record.expenseId && record.status !== 'PAID', paidAt: record.paidAt ?? null, status: effectiveStatus(record, now) };
 }
 
 function statusFilter(status, now = new Date()) {

@@ -1,3 +1,6 @@
+const {activeRecordGroup}=require('../groups/group.lifecycle');
+const Record=require('./Expense');
+const recordGroup=activeRecordGroup(Record,'expenseId');
 const express = require('express');
 const { updateRecurrence } = require('./expense.recurrence');
 
@@ -31,21 +34,24 @@ router.get(
 router.get(
   '/:expenseId',
   protect,
+  recordGroup,
   getExpenseById
 );
 
 router.put(
   '/:expenseId',
   protect,
+  recordGroup,
   updateExpense
 );
 
 router.delete(
   '/:expenseId',
   protect,
+  recordGroup,
   deleteExpense
 );
 
-router.patch('/:expenseId/recurrence',protect,updateRecurrence);
+router.patch('/:expenseId/recurrence',protect,recordGroup,updateRecurrence);
 
 module.exports = router;

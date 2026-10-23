@@ -162,3 +162,31 @@ test('search and category narrow overdue results before paging and counting', as
   assert.equal(res.body.pagination.hasPreviousPage, true);
   assert.equal(res.body.pagination.hasNextPage, false);
 });
+
+
+test('default and explicit upcoming views contain all unpaid statuses before pagination/counting',async()=>{
+ freeze();const seen=[];
+ mock.method(Bill,'find',filter=>{seen.push(filter);return chain(records.filter(item=>matches(item,filter)));});
+ mock.method(Bill,'countDocuments',async filter=>{seen.push(filter);return records.filter(item=>matches(item,filter)).length;});
+ for(const view of [undefined,'upcoming']){
+  const res=response();await getGroupBills({params:{id:'g'},query:{view,limit:'2'}},res);
+  assert.equal(res.statusCode,200);assert.equal(res.body.pagination.total,6);
+  assert.ok(res.body.data.bills.every(item=>item.status!=='PAID'));
+  assert.equal(res.body.data.bills[0].status,'OVERDUE');assert.equal(res.body.data.bills[1].status,'PENDING');
+ }
+ assert.deepEqual(seen[0],seen[1]);
+});
+test('history is paid-only while legacy PAID shortcuts still open history',async()=>{
+ freeze();
+ mock.method(Bill,'find',filter=>chain(records.filter(item=>matches(item,filter))));
+ mock.method(Bill,'countDocuments',async filter=>records.filter(item=>matches(item,filter)).length);
+ for(const query of [{view:'history'},{status:'PAID'},{view:'history',category:'rent',search:'paid'}]){
+  const res=response();await getGroupBills({params:{id:'g'},query},res);assert.equal(res.statusCode,200);assert.equal(res.body.pagination.total,1);assert.deepEqual(res.body.data.bills.map(item=>item._id),['paid-late']);
+ }
+});
+test('invalid or contradictory views cannot mix paid and unpaid results',async()=>{
+ mock.method(Bill,'find',()=>assert.fail('must not query invalid views'));
+ for(const query of [{view:'all'},{view:['history','upcoming']},{view:{$ne:'history'}},{view:'upcoming',status:'PAID'},{view:'history',status:'PENDING'},{view:'history',status:'OVERDUE'}]){
+  const res=response();await getGroupBills({params:{id:'g'},query},res);assert.equal(res.statusCode,400);
+ }
+});

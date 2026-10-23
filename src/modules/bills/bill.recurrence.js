@@ -33,7 +33,7 @@ async function generateRecurringBills({ now = new Date(), maxPerSource = 120, on
         const source = await Bill.findById(candidate._id);
         if (!source || !source.isRecurring || source.recurrenceSourceId) break;
         const group = await Group.findById(source.groupId);
-        if (!group) break;
+        if (!group || group.deletedAt) break;
         money(group.currency).readUnits(source.amount);
         const through = source.generatedThrough || 0;
         // Generate the next bill when the previous occurrence becomes due.

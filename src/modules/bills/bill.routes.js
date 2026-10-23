@@ -1,4 +1,8 @@
+const {activeRecordGroup}=require('../groups/group.lifecycle');
+const Record=require('./Bill');
+const recordGroup=activeRecordGroup(Record,'billId');
 const express = require('express');
+const {payBill}=require('./bill.payment');
 
 const {
   createBill,
@@ -30,19 +34,24 @@ router.get(
 router.get(
   '/:billId',
   protect,
+  recordGroup,
   getBillById
 );
 
 router.put(
   '/:billId',
   protect,
+  recordGroup,
   updateBill
 );
 
 router.delete(
   '/:billId',
   protect,
+  recordGroup,
   deleteBill
 );
+
+router.post('/:billId/pay',protect,recordGroup,payBill);
 
 module.exports = router;

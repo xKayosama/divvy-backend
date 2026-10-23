@@ -7,7 +7,7 @@ const groupAccess = async (req, res, next) => {
 
     const group = await Group.findById(id);
 
-    if (!group) {
+    if (!group || group.deletedAt) {
       return res.status(404).json({
         success: false,
         message: 'Group not found.'

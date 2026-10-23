@@ -12,7 +12,7 @@ const { groupAccess } = require('../src/modules/groups/groupAccess.middleware');
 const { migrateGroups } = require('../scripts/migrate-groups');
 afterEach(() => mock.restoreAll());
 const response = () => ({ statusCode: 200, status(code) { this.statusCode = code; return this; }, json(body) { this.body = body; return this; } });
-const query = value => ({ populate() { return this; }, sort() { return this; }, skip() { return this; }, limit() { return this; }, then(resolve, reject) { return Promise.resolve(value).then(resolve, reject); } });
+const query = value => ({ setOptions(){return this;}, populate() { return this; }, sort() { return this; }, skip() { return this; }, limit() { return this; }, then(resolve, reject) { return Promise.resolve(value).then(resolve, reject); } });
 const req = () => ({ params: { id: 'g' }, user: { _id: 'a' }, group: { _id: 'g' }, membership: { role: 'OWNER' }, body: {}, query: {} });
 
 test('models retain collections and Group references, membership status and defaults', () => {
@@ -46,11 +46,11 @@ test('Group create, list, read, update, delete preserve owner membership and cas
   mock.method(Member, 'find', () => query([{ groupId: record, userId: { _id: 'a' }, role: 'OWNER' }]));
   res = response(); await groups.getMyGroups(req(), res); assert.equal(res.body.data.groups[0].id, 'g');
   request = req(); request.group = record; res = response(); await groups.getGroupById(request, res); assert.equal(res.body.data.group.id, 'g');
-  mock.method(Group, 'findById', async () => record);
+  mock.method(Group, 'findById', () => query(record));
   for (const Model of [Expense, Bill, require('../src/modules/settlements/Settlement')]) mock.method(Model, 'exists', async () => null);
   request = req(); request.body = { name: ' Event ', currency: ' usd ' }; res = response(); await groups.updateGroup(request, res); assert.equal(record.name, 'Event'); assert.equal(record.currency, 'USD');
   request.user._id = 'b'; res = response(); await groups.updateGroup(request, res); assert.equal(res.statusCode, 403);
-  mock.method(Group, 'findByIdAndDelete', async id => assert.equal(id, 'g'));
+  mock.method(Group, 'findByIdAndDelete', id => {assert.equal(id,'g');return query(null);});
   for (const Model of [Member, Expense, Bill, require('../src/modules/settlements/Settlement')]) mock.method(Model, 'deleteMany', async filter => assert.deepEqual(filter, { groupId: 'g' }));
   res = response(); await groups.deleteGroup(req(), res); assert.equal(res.statusCode, 200);
 });
@@ -271,7 +271,7 @@ test('group creation validates and persists every allowed icon', async () => {
 
 test('group icon updates require ownership, preserve omitted icons and reject invalid values', async () => {
   const record = { _id: 'g', name: 'Home', currency: 'PHP', icon: 'home', ownerId: 'a', async save() {} };
-  mock.method(Group, 'findById', async () => record);
+  mock.method(Group, 'findById', () => query(record));
   const request = req(); request.body = { name: 'Renamed' };
   let res = response(); await groups.updateGroup(request, res);
   assert.equal(res.statusCode, 200); assert.equal(record.icon, 'home');
@@ -298,7 +298,7 @@ for (const [label, ActiveModel] of [['expense', Expense], ['bill', Bill], ['paym
     let saves = 0;
     const record = { _id: 'g', name: 'Home', ownerId: 'a', currency: 'PHP', async save() { saves++; } };
     const request = req(); request.group = record;
-    mock.method(Group, 'findById', async () => record);
+    mock.method(Group, 'findById', () => query(record));
     mock.method(Member, 'find', () => query([]));
     if (ActiveModel) mock.method(ActiveModel, 'exists', async filter => { assert.deepEqual(filter, { groupId: 'g' }); return { _id: 'record' }; });
     let res = response(); await groups.getGroupById(request, res);
@@ -318,7 +318,7 @@ for (const [label, ActiveModel] of [['expense', Expense], ['bill', Bill], ['paym
 test('currency editing is owner-only and saving rechecks activity after eligibility was fetched', async () => {
   const record = { _id: 'g', name: 'Home', ownerId: 'a', currency: 'PHP', async save() { assert.fail('must not save'); } };
   const request = req(); request.group = record;
-  mock.method(Group, 'findById', async () => record);
+  mock.method(Group, 'findById', () => query(record));
   mock.method(Member, 'find', () => query([]));
   let res = response(); await groups.getGroupById(request, res);
   assert.equal(res.body.data.group.canChangeCurrency, true);

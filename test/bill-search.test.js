@@ -46,7 +46,7 @@ test('search treats regex metacharacters as literal text', async () => {
 });
 for (const search of [undefined, '', '   ']) {
   test(`empty search ${JSON.stringify(search)} adds no search condition`, async () => {
-    stubList(filter => assert.deepEqual(filter, { groupId: 'g' }));
+    stubList(filter => assert.deepEqual(filter, { groupId: 'g', status: { $ne: 'PAID' } }));
     const res = response();
     await getGroupBills({ params: { id: 'g' }, query: { search, page: 2, limit: 5 } }, res);
     assert.equal(res.statusCode, 200);

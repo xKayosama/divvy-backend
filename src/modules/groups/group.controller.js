@@ -87,7 +87,7 @@ const getMyGroups = async (req, res) => {
     // Population can return null for deleted groups, or undefined for legacy
     // memberships that have not yet had householdId migrated to groupId.
     const groups = memberships
-      .filter((membership) => membership.groupId)
+      .filter((membership) => membership.groupId && !membership.groupId.deletedAt)
       .map((membership) => ({
         id: membership.groupId._id,
         name: membership.groupId.name,
@@ -408,7 +408,7 @@ const deleteGroup = async (req, res) => {
   try {
     const { id: groupId } = req.params;
 
-    const group = await Group.findById(groupId);
+    const group = await Group.findById(groupId).setOptions({withDeleted:true});
 
     if (!group) {
       return res.status(404).json({
@@ -427,7 +427,7 @@ const deleteGroup = async (req, res) => {
       });
     }
 
-    await Group.findByIdAndDelete(groupId);
+    await Group.findByIdAndDelete(groupId).setOptions({withDeleted:true});
 
     // Remove group memberships
     await GroupMember.deleteMany({

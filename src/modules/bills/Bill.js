@@ -71,6 +71,8 @@ const billSchema = new mongoose.Schema(
     },
 
     // Server time when payment was recorded; legacy paid bills remain unknown.
+    expenseId:{type:mongoose.Schema.Types.ObjectId,ref:'Expense',default:null},
+    payment:{type:mongoose.Schema.Types.Mixed,default:undefined,select:false},
     paidAt: {
       type: Date,
       default: null

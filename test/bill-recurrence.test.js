@@ -109,3 +109,8 @@ test('recurring KWD bills retain fils and legacy fractional JPY sources are bloc
   assert.equal(errors[0][1].code, 'CURRENCY_PRECISION_CONFLICT');
   assert.equal(legacy.source.amount, 1.25);
 });
+
+test('soft-deleted groups do not generate recurring bills',async()=>{
+ const {generated}=fixture();mock.method(Group,'findById',async()=>({currency:'PHP',deletedAt:new Date()}));
+ await generateRecurringBills({now:new Date('2026-10-23')});assert.equal(generated.size,0);
+});

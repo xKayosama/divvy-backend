@@ -1,3 +1,4 @@
+const {payBill}=require('./bill.payment');
 const Group = require('../groups/Group');
 const { money } = require('../../utils/money');
 const { presentBill, statusFilter } = require('./bill.reminders');
@@ -20,6 +21,7 @@ const createBill = async (req, res) => {
       notes
     } = req.body;
 
+    if (typeof status === 'string' && status.toUpperCase() === 'PAID') return res.status(400).json({success:false,message:'Create the bill first, then record its payment with a payer and split.'});
     // Validate name
     if (!name || !name.trim()) {
       return res.status(400).json({
@@ -148,6 +150,7 @@ const getGroupBills = async (req, res) => {
       limit = 10,
       category,
       status,
+      view,
       isRecurring,
       search,
       sort = 'due_soonest'
@@ -204,6 +207,12 @@ const getGroupBills = async (req, res) => {
       }
       Object.assign(filters, statusFilter(status.toUpperCase(), now));
     }
+
+    if(view !== undefined && (typeof view !== 'string' || !['upcoming','history'].includes(view))) return res.status(400).json({success:false,message:'view must be upcoming or history.'});
+    const selectedView=view ?? (typeof status==='string' && status.toUpperCase()==='PAID' ? 'history' : 'upcoming');
+    if((selectedView==='history' && status!==undefined && status.toUpperCase()!=='PAID') || (selectedView==='upcoming' && typeof status==='string' && status.toUpperCase()==='PAID')) return res.status(400).json({success:false,message:'Status must match the selected bill view.'});
+    if(selectedView==='history') filters.status='PAID';
+    else if(status===undefined) filters.status={$ne:'PAID'};
 
     // Recurring filter
     if (isRecurring !== undefined) {
@@ -366,6 +375,9 @@ const updateBill = async (req, res) => {
       });
     }
 
+    if (bill.expenseId) return res.status(409).json({success:false,message:'Payment is being recorded. Finish or retry the saved payment.'});
+    if (typeof status === 'string' && status.toUpperCase() === 'PAID') return payBill(req,res);
+
     if (bill.recurrenceSourceId && isRecurring === true) {
       return res.status(400).json({
         code: 400,
@@ -511,7 +523,7 @@ const updateBill = async (req, res) => {
 
     // The condition also prevents a concurrent payment from being overwritten.
     const updatedBill = await Bill.findOneAndUpdate(
-      { _id: billId, status: { $ne: 'PAID' } },
+      { _id: billId, status: { $ne: 'PAID' }, expenseId: null },
       { $set: {
         name: bill.name, amount: bill.amount, category: bill.category,
         dueDate: bill.dueDate, isRecurring: bill.isRecurring,
@@ -588,7 +600,9 @@ const deleteBill = async (req, res) => {
       });
     }
 
-    const deletedBill = await Bill.findOneAndDelete({ _id: billId, status: { $ne: 'PAID' } });
+    if (bill.expenseId) return res.status(409).json({success:false,message:'Payment is being recorded. Finish or retry the saved payment.'});
+
+    const deletedBill = await Bill.findOneAndDelete({ _id: billId, status: { $ne: 'PAID' }, expenseId: null });
     if (!deletedBill) {
       return res.status(409).json({ code: 409, success: false, message: 'Bill was paid or removed. Reload the bill list.' });
     }
