@@ -586,3 +586,16 @@ Codes are cryptographically random 8-digit strings (including leading zeros), va
 Request limits: 5 code requests and 20 reset submissions per IP per 15 minutes; database-backed 60-second account cooldown. Fast request responses are padded to one second to reduce timing differences; synchronous provider latency can still vary. As with login limits, configure a shared limiter/gateway when scaling and configure trusted proxies explicitly. Codes expire via query checks; no TTL index deletes user records.
 
 Run `node --test test/auth.test.js test/password-reset.test.js test/readiness.test.js`. Tests mock delivery/database operations; also verify actual email delivery and old/new password login in staging with MongoDB and configured Resend credentials before release.
+
+
+## Group invitations
+
+Owners create invitations with `POST /api/groups/:id/invitations { email }`, receive a one-time 32-character shared code, list recent invitations with GET at the same route, and revoke with `POST /api/groups/:id/invitations/:invitationId/revoke { createdAt }`. Both registered and future accounts are supported. The owner shares the code; no invitation email is sent.
+
+Recipients sign in with the invited email, list `GET /api/invitations`, review `POST /api/invitations/lookup { code }`, then accept via `POST /api/invitations/:invitationId/accept { createdAt, code }` or decline via `/decline { createdAt }`. Codes expire after seven days. A shared code is required to accept, in addition to matching the account email, because account registration does not verify email ownership. Details are not exposed to other accounts. Code hashes are stored; raw codes are returned only when created. Stale generation timestamps return 409; wrong account 404; expired 410.
+
+Invitations use hidden metadata on INACTIVE GroupMember documents. Membership activation and invitation acceptance occur in one atomic write, without transactions. Partial unique indexes protect group/email and code hash uniqueness; creation waits for model index initialization. Existing inactive memberships are reused; accepted invitations cannot be replayed after removal. Pending invitations do not participate in group access, payer/participant lists or balances. Deleted groups cannot be joined. Permanent deletion removes invitations with other membership records.
+
+**Compatibility:** the former direct-add `POST /api/groups/:id/members` route now returns 410. Update the mobile client alongside the backend. Existing group members remain active without migration. Owner/inbox listings return up to 100 records; code lookup also works for older pending invitations. Owner creation allows 30 requests/IP/hour; code lookup 30/IP/15 minutes. Shared limiter infrastructure is needed for multiple API instances.
+
+Run `node --test test/invitations.test.js` for contract, authorization, expiry, consent and concurrency regressions. A live local HTTP/MongoDB smoke test also verified creation, inbox, no pre-accept access, code/email checks, acceptance, decline, revocation and registration after invitation using disposable fixtures, then cleaned them up.

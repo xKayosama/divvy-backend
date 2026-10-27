@@ -35,6 +35,7 @@ app.get('/api/ready', async (req, res) => {
 });
 
 app.use('/api/auth', authRoutes);
+app.use('/api/invitations', require('./modules/groups/invitation.routes'));
 app.use('/api/groups', groupRoutes);
 app.use('/api/groups', expenseRoutes);
 app.use('/api/groups', balanceRoutes);
