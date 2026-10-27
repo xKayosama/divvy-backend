@@ -44,6 +44,11 @@ async function create(req, res) {
     } else {
       member = await Member.create({ groupId: req.group._id, userId: user?._id, role: 'MEMBER', status: 'INACTIVE', invitation });
     }
+    if (user) {
+      try { await require('../notifications/inbox').record(user._id, 'invitation', `${member._id}:${now.toISOString()}`, {
+        title: 'Group invitation', body: 'You have an invitation to join a group. Open invitations to review it.',
+      }, now); } catch { console.error('Could not save invitation to notification inbox.'); }
+    }
     return res.status(201).json({ success: true, message: 'Invitation created. Share the code with the recipient.', data: { invitation: present(member, req.group), code } });
   } catch (error) {
     if (error.code === 11000) return fail(res, 409, 'An invitation already exists. Refresh and try again.');

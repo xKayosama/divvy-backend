@@ -1,10 +1,12 @@
-const { test, mock, afterEach } = require('node:test');
+const { test, mock, beforeEach, afterEach } = require('node:test');
 const assert = require('node:assert/strict');
 const { createHash } = require('node:crypto');
 const mongoose = require('mongoose');
 const Member = require('../src/modules/groups/GroupMember');
 const Group = require('../src/modules/groups/Group');
 const User = require('../src/modules/users/User');
+const Inbox = require('../src/modules/notifications/InboxNotification');
+beforeEach(() => mock.method(Inbox, 'updateOne', async () => ({})));
 const invitations = require('../src/modules/groups/group.invitations');
 const groupId = '100000000000000000000001';
 const userId = '200000000000000000000001';
@@ -48,6 +50,7 @@ test('new and unregistered recipients remain inactive; raw code is returned once
  setupCreate(); const request = req(); request.body.email = ' FRIEND@example.com '; const res = response();
  await invitations.create(request, res);
  assert.equal(res.statusCode, 201); assert.match(res.body.data.code, /^[a-f0-9]{32}$/);
+ assert.equal(Inbox.updateOne.mock.callCount(), 0);
  const stored = Member.create.mock.calls[0].arguments[0];
  assert.equal(stored.status, 'INACTIVE'); assert.equal(stored.userId, undefined); assert.equal(stored.invitation.email, email);
  assert.equal(stored.invitation.expiresAt - stored.invitation.createdAt, 7 * 86400000);
@@ -71,6 +74,11 @@ test('expired/revoked invites reuse inactive memberships with a generation compa
   assert.equal(update.$set.role, 'MEMBER'); return query({ ...old, ...update.$set });
  });
  const res = response(); await invitations.create(req(), res); assert.equal(res.statusCode, 201); assert.equal(Member.create.mock.callCount(), 0);
+ assert.equal(Inbox.updateOne.mock.callCount(), 1);
+ const [filter, update] = Inbox.updateOne.mock.calls[0].arguments;
+ assert.equal(filter.userId, userId);
+ assert.equal(update.$setOnInsert.type, 'invitation');
+ assert.equal(update.$setOnInsert.body.includes(email), false);
 });
 
 test('concurrent creation conflicts and index initialization failures fail safely', async () => {

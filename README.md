@@ -599,3 +599,16 @@ Invitations use hidden metadata on INACTIVE GroupMember documents. Membership ac
 **Compatibility:** the former direct-add `POST /api/groups/:id/members` route now returns 410. Update the mobile client alongside the backend. Existing group members remain active without migration. Owner/inbox listings return up to 100 records; code lookup also works for older pending invitations. Owner creation allows 30 requests/IP/hour; code lookup 30/IP/15 minutes. Shared limiter infrastructure is needed for multiple API instances.
 
 Run `node --test test/invitations.test.js` for contract, authorization, expiry, consent and concurrency regressions. A live local HTTP/MongoDB smoke test also verified creation, inbox, no pre-accept access, code/email checks, acceptance, decline, revocation and registration after invitation using disposable fixtures, then cleaned them up.
+
+
+## Bill push notifications
+
+Authenticated routes under `/api/notifications`: `POST /devices { token, timeZone }` enables the current user's device, `POST /status { token }` reads its status, `DELETE /devices { token }` disables it, and `POST /test { token }` requests a generic test (5/IP/15 minutes). Tokens are validated, query-hidden and never returned. The account is taken from authentication; no sender can target another user's registered device. Registration reassigns the installation to the current user and clears previous-account delivery state.
+
+Set backend `BILL_NOTIFICATIONS_ENABLED=true` and restart **after** configuring Expo/FCM/APNs credentials. Default is off. Set backend-only `EXPO_ACCESS_TOKEN` if enhanced Expo push security is enabled. A continuously running backend is required. Mobile needs a new development build with expo-notifications; web and Expo Go are not supported for this flow.
+
+The minute worker uses per-device database leases and a daily state record. At/after 9AM device local time it sends a generic count digest for unpaid overdue/today/tomorrow bills in active memberships and nondeleted groups. Bill dates follow the existing UTC reminder rules. Summaries are recomputed before retries. Successful daily sends are deduplicated per device/local date. Receipt polling begins after 15 minutes; invalid device tokens are disabled, credential errors are recorded, and transient errors use bounded exponential retries. Delivery is best effort; Expo acceptance is not device arrival, and ambiguous network retries can duplicate delivery.
+
+Push registration is bound to token revocation/expiry and authVersion. Logged-out, expired and password-reset sessions cannot receive future reminders; client resumes re-register only an already-enabled device for the same account. Bodies contain counts only; payload IDs support safe account-bound navigation. Test pushes do not consume the daily reminder slot. Never log tokens or put EXPO_ACCESS_TOKEN in mobile public variables.
+
+Tests: `node --test test/notifications.test.js`. These mock the push service; actual device delivery requires platform credentials and a native build.

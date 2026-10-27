@@ -10,6 +10,7 @@ const { startRecurringExpenseWorker } = require('./src/modules/expenses/expense.
 
 const { startRecurringBillWorker } = require('./src/modules/bills/bill.recurrence');
 
+const { startBillNotificationsWorker } = require('./src/modules/notifications/bill-notifications');
 const mongoose = require('mongoose');
 const { validateEnvironment } = require('./src/config/environment');
 
@@ -20,6 +21,7 @@ const startServer = async () => {
   const stopWorker = await startRecurringBillWorker();
   const stopExpenseWorker = await startRecurringExpenseWorker();
   const stopPaymentWorker = await startBillPaymentWorker();
+  const stopNotificationWorker = startBillNotificationsWorker();
 
   const server = app.listen(port);
   server.once('listening', () => {
@@ -39,6 +41,7 @@ const startServer = async () => {
     stopWorker();
     stopExpenseWorker();
     stopPaymentWorker();
+    stopNotificationWorker();
     const deadline = setTimeout(() => process.exit(1), 10000);
     deadline.unref();
     server.close(async () => {
