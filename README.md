@@ -571,3 +571,18 @@ Deploy backend support before clients that submit ITEMIZED expenses.
 `GET /api/groups/:id/activity?page=1&limit=20` is available to authenticated ACTIVE members of an active group. It returns `data.activities` and `data.pagination`, ordered newest first. Entries include recorder name, action, target ID, saved label, timestamp, and optional before/after changes or expense snapshots. It records expense creation/edit/deletion, recurring schedule edits/automatic entries, bill payments, and changed group name/icon/currency. Failed/no-op changes do not add events; payment retries reuse deterministic event IDs and the original recorder. Activity survives expense deletion and soft group deletion; permanent group deletion removes it. Existing changes are not backfilled.
 
 Activity is informational: event inserts follow domain writes and are not transactionally coupled. Monitor `Activity history write failed`; a database interruption between writes can leave missing history without rolling back a completed financial operation. No public activity mutation endpoints exist. Query page is 1–1,000,000 and limit 1–100; invalid/repeated values return 400. Actors expose only ID and name.
+
+
+## Password reset
+
+Public routes:
+- `POST /api/auth/forgot-password` with `{ "email": "name@example.com" }` returns 200 and the same generic message for existing/unknown accounts and requests during the 60-second per-account cooldown.
+- `POST /api/auth/reset-password` with `{ "email": "name@example.com", "code": "01234567", "password": "new-password" }` returns 200 on success, 400 for invalid/expired/used codes or invalid input, and 503 on service failure. Passwords require at least 8 characters and at most 72 UTF-8 bytes, matching registration.
+
+Set backend-only `RESEND_API_KEY` and `PASSWORD_RESET_FROM` (for example `Divvy <reset@your-verified-domain.com>`). Verify the sender domain in Resend. No email credentials belong in Expo public variables. Without both settings, requests return 503 for every email. Provider failures are logged without email/code/password details, invalidate the issued code, and retain the generic response to avoid exposing account existence. Users can request another code after checking their inbox/spam folder. No console delivery mode exposes codes.
+
+Codes are cryptographically random 8-digit strings (including leading zeros), valid for 15 minutes, with at most five verification attempts. Only an HMAC keyed with JWT_SECRET is persisted in a hidden User field. A newer request replaces the previous code; successful reset atomically changes the bcrypt password, consumes the code and increments authVersion, invalidating all previous access tokens, including legacy tokens. The next login issues the new version. No automatic login occurs after reset. Existing users require no migration (absent authVersion means zero).
+
+Request limits: 5 code requests and 20 reset submissions per IP per 15 minutes; database-backed 60-second account cooldown. Fast request responses are padded to one second to reduce timing differences; synchronous provider latency can still vary. As with login limits, configure a shared limiter/gateway when scaling and configure trusted proxies explicitly. Codes expire via query checks; no TTL index deletes user records.
+
+Run `node --test test/auth.test.js test/password-reset.test.js test/readiness.test.js`. Tests mock delivery/database operations; also verify actual email delivery and old/new password login in staging with MongoDB and configured Resend credentials before release.

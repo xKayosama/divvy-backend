@@ -10,4 +10,6 @@ const options = {
 const loginLimit = rateLimit({ ...options, limit: 20, skipSuccessfulRequests: true });
 const registrationLimit = rateLimit({ ...options, limit: 5 });
 
-module.exports = { loginLimit, registrationLimit };
+const passwordResetRequestLimit = rateLimit({ ...options, limit: 5 });
+const passwordResetLimit = rateLimit({ ...options, limit: 20 });
+module.exports = { loginLimit, registrationLimit, passwordResetRequestLimit, passwordResetLimit };

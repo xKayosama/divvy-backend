@@ -28,6 +28,18 @@ const userSchema = new mongoose.Schema(
       minlength: 6
     },
 
+    // Hidden from ordinary queries and member population responses.
+    passwordReset: {
+      type: new mongoose.Schema({
+        codeHash: String,
+        expiresAt: Date,
+        requestedAt: Date,
+        attempts: { type: Number, default: 0 }
+      }, { _id: false }),
+      select: false
+    },
+    authVersion: { type: Number, default: 0 },
+
     avatar: {
       type: String,
       default: null

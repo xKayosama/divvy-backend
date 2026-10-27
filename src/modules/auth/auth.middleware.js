@@ -38,6 +38,10 @@ const protect = async (req, res, next) => {
       });
     }
 
+    if ((decoded.authVersion || 0) !== (user.authVersion || 0)) {
+      return res.status(401).json({ success: false, message: 'Your password changed. Please sign in again.' });
+    }
+
     req.user = user;
     req.auth = { tokenHash, expiresAt: new Date(decoded.exp * 1000) };
 
