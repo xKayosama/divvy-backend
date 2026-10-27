@@ -22,6 +22,7 @@ const groupSchema = new mongoose.Schema(
     },
 
     deletedAt:{type:Date,default:null},
+    accountDeletion: { type: new mongoose.Schema({ purgeAfter: Date, originalDeletedAt: Date }, { _id: false }), default: undefined },
     deletedBy:{type:mongoose.Schema.Types.ObjectId,ref:'User',default:null},
     currency: {
       type: String,

@@ -68,7 +68,7 @@ const chain = value => ({ populate() { return this; }, sort() { return this; }, 
 test('dashboard comparison reconciles with selected summary while bills and settlements stay separate', async () => {
   mock.timers.enable({ apis: ['Date'], now });
   const entries = [expense('2026-10-01', 20), expense('2026-09-01', 10), expense('2026-08-01', 5)];
-  mock.method(Member, 'find', filter => { assert.deepEqual(filter, { groupId: 'g', status: 'ACTIVE' }); return chain([{ userId: { _id: 'u' } }]); });
+  mock.method(Member, 'find', filter => { assert.deepEqual(filter, { groupId: 'g', $or: [{ status: 'ACTIVE' }, { accountDeleted: true }] }); return chain([{ userId: { _id: 'u' } }]); });
   mock.method(Expense, 'find', filter => { assert.deepEqual(filter, { groupId: 'g' }); return chain(entries); });
   mock.method(Bill, 'find', filter => { assert.deepEqual(filter, { groupId: 'g' }); return chain([{ _id: 'b', amount: 999, status: 'PENDING', dueDate: '2026-10-15' }]); });
   mock.method(Settlement, 'find', async filter => { assert.deepEqual(filter, { groupId: 'g' }); return [{ from: 'u', to: 'other', amount: 3 }]; });

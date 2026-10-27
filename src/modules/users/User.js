@@ -39,6 +39,15 @@ const userSchema = new mongoose.Schema(
       select: false
     },
     authVersion: { type: Number, default: 0 },
+    deletedAt: { type: Date, default: null },
+    deletion: { type: new mongoose.Schema({ email: String, finalizeAfter: Date }, { _id: false }), select: false },
+    emailChange: {
+      type: new mongoose.Schema({
+        email: String, codeHash: String, authVersion: Number,
+        expiresAt: Date, requestedAt: Date, attempts: { type: Number, default: 0 }
+      }, { _id: false }),
+      select: false
+    },
 
     avatar: {
       type: String,

@@ -22,6 +22,7 @@ const startServer = async () => {
   const stopExpenseWorker = await startRecurringExpenseWorker();
   const stopPaymentWorker = await startBillPaymentWorker();
   const stopNotificationWorker = startBillNotificationsWorker();
+  const stopDeletionWorker = require('./src/modules/auth/account-deletion').startAccountDeletionWorker();
 
   const server = app.listen(port);
   server.once('listening', () => {
@@ -42,6 +43,7 @@ const startServer = async () => {
     stopExpenseWorker();
     stopPaymentWorker();
     stopNotificationWorker();
+    stopDeletionWorker();
     const deadline = setTimeout(() => process.exit(1), 10000);
     deadline.unref();
     server.close(async () => {

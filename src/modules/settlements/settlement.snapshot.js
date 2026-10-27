@@ -7,7 +7,7 @@ const { money } = require('../../utils/money');
 
 async function getSettlementSnapshot(groupId, currency) {
   const { readUnits: cents, scale } = money(currency);
-  const memberships = await GroupMember.find({ groupId, status: 'ACTIVE' }).populate({ path: 'userId', select: 'firstName lastName email avatar' });
+  const memberships = await GroupMember.find({ groupId, $or: [{ status: 'ACTIVE' }, { accountDeleted: true }] }).populate({ path: 'userId', select: 'firstName lastName email avatar deletedAt' });
   const expenses = await Expense.find({ groupId });
   const payments = await Settlement.find({ groupId });
   const balances = new Map(memberships.filter(m => m.userId).map(m => [id(m.userId), { user: m.userId, net: 0 }]));
@@ -25,8 +25,8 @@ async function getSettlementSnapshot(groupId, currency) {
     if (to) to.net -= cents(payment.amount);
   }
   const ordered = [...balances.values()].sort((a, b) => id(a.user).localeCompare(id(b.user)));
-  const creditors = ordered.filter(b => b.net > 0).map(b => ({ ...b }));
-  const debtors = ordered.filter(b => b.net < 0).map(b => ({ ...b, net: -b.net }));
+  const creditors = ordered.filter(b => b.net > 0 && !b.user.deletedAt).map(b => ({ ...b }));
+  const debtors = ordered.filter(b => b.net < 0 && !b.user.deletedAt).map(b => ({ ...b, net: -b.net }));
   const settlements = [];
   let d = 0; let c = 0;
   while (d < debtors.length && c < creditors.length) {

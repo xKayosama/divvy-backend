@@ -40,6 +40,8 @@ const groupMemberSchema = new mongoose.Schema(
       select: false
     },
 
+    accountDeleted: { type: Boolean, default: false },
+
     joinedAt: {
       type: Date,
       default: Date.now

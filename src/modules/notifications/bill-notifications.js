@@ -37,8 +37,8 @@ async function currentSummary(userId, now) {
 }
 async function validSession(device, now) {
   if (device.authExpiresAt <= now) return false;
-  const user = await User.findById(device.userId).select('authVersion');
-  return !!user && (user.authVersion || 0) === device.authVersion && !await Revoked.exists({ tokenHash: device.authTokenHash });
+  const user = await User.findById(device.userId).select('authVersion deletedAt');
+  return !!user && !user.deletedAt && (user.authVersion || 0) === device.authVersion && !await Revoked.exists({ tokenHash: device.authTokenHash });
 }
 async function save(device, fields) {
   return Device.updateOne({ _id: device._id, generation: device.generation, enabled: true }, { $set: { leaseUntil: new Date(0), ...fields } });

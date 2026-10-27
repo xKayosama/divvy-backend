@@ -11,7 +11,7 @@ const getGroupBalances = async (req, res) => {
     // Get active group members
     const memberships = await GroupMember.find({
       groupId,
-      status: 'ACTIVE'
+      $or: [{ status: 'ACTIVE' }, { accountDeleted: true }]
     }).populate({
       path: 'userId',
       select: 'firstName lastName email avatar'

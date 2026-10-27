@@ -49,7 +49,7 @@ const expense = (category, date, amount) => ({ category, date, amount, paidBy: {
 const chain = value => ({ sort() { return this; }, populate() { return this; }, then(resolve, reject) { return Promise.resolve(value).then(resolve, reject); } });
 function setup(entries) {
   mock.timers.enable({ apis: ['Date'], now });
-  mock.method(Member, 'find', filter => { assert.deepEqual(filter, { groupId: 'g', status: 'ACTIVE' }); return chain([{ userId: { _id: 'u' } }]); });
+  mock.method(Member, 'find', filter => { assert.deepEqual(filter, { groupId: 'g', $or: [{ status: 'ACTIVE' }, { accountDeleted: true }] }); return chain([{ userId: { _id: 'u' } }]); });
   mock.method(Expense, 'find', filter => { assert.deepEqual(filter, { groupId: 'g' }); return chain(entries); });
   mock.method(Bill, 'find', filter => { assert.deepEqual(filter, { groupId: 'g' }); return chain([{ _id: 'bill', amount: 999, status: 'PENDING', category: 'FOOD', dueDate: '2026-10-15' }]); });
   mock.method(Settlement, 'find', async filter => { assert.deepEqual(filter, { groupId: 'g' }); return [{ from: 'u', to: 'other', amount: 50 }]; });

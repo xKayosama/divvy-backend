@@ -31,7 +31,7 @@ const protect = async (req, res, next) => {
 
     const user = await User.findById(decoded.userId).select('-password');
 
-    if (!user) {
+    if (!user || user.deletedAt) {
       return res.status(401).json({
         success: false,
         message: 'User no longer exists.'

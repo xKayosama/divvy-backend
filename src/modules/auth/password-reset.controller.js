@@ -20,7 +20,7 @@ async function requestPasswordReset(req, res) {
   try {
     // Atomic per-account cooldown also works across multiple API instances.
     const user = await User.findOneAndUpdate({
-      email: normalized,
+      email: normalized, deletedAt: null,
       $or: [{ 'passwordReset.requestedAt': { $exists: false } }, { 'passwordReset.requestedAt': { $lte: new Date(started - 60000) } }]
     }, { $set: { passwordReset: { codeHash, requestedAt: new Date(started), expiresAt: new Date(started + 15 * 60000), attempts: 0 } } }, { new: true });
     if (user) {
@@ -48,7 +48,7 @@ async function resetPassword(req, res) {
   try {
     // Reserve an attempt before checking. Concurrent guesses cannot exceed five.
     const user = await User.findOneAndUpdate({
-      email: email.trim().toLowerCase(),
+      email: email.trim().toLowerCase(), deletedAt: null,
       'passwordReset.expiresAt': { $gt: new Date() },
       'passwordReset.attempts': { $lt: 5 }
     }, { $inc: { 'passwordReset.attempts': 1 } }, { new: true }).select('+passwordReset');
@@ -63,7 +63,7 @@ async function resetPassword(req, res) {
       _id: user._id,
       'passwordReset.codeHash': stored,
       'passwordReset.expiresAt': { $gt: new Date() }
-    }, { $set: { password: hashedPassword }, $inc: { authVersion: 1 }, $unset: { passwordReset: 1 } });
+    }, { $set: { password: hashedPassword }, $inc: { authVersion: 1 }, $unset: { passwordReset: 1, emailChange: 1 } });
     if (result.modifiedCount !== 1) return res.status(400).json({ success: false, message: INVALID });
     return res.status(200).json({ success: true, message: 'Your password has been reset. Sign in with your new password.' });
   } catch {
