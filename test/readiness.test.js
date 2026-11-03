@@ -30,6 +30,7 @@ test('invalid registration is rejected before database queries or password hashi
 });
 
 test('registration normalizes email and handles duplicate creation races', async () => {
+  mock.method(require('../src/modules/auth/password-reset.email'), 'isConfigured', () => true);
   mock.method(User, 'findOne', async filter => { assert.equal(filter.email, 'test@example.com'); return null; });
   mock.method(bcrypt, 'hash', async () => 'hash');
   mock.method(User, 'create', async () => { throw Object.assign(new Error('duplicate'), { code: 11000 }); });

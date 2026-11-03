@@ -8,6 +8,9 @@ async function sendCode(email, code) {
 async function sendEmailChangeCode(email, code) {
   return sendEmail(email, 'Verify your new Divvy email', `Your Divvy email verification code is ${code}.\n\nIt expires in 15 minutes. Enter it in Divvy to confirm your new email address. Never share this code. If you did not request this, ignore this email.`);
 }
+async function sendSignupCode(email, code) {
+  return sendEmail(email, 'Verify your Divvy account', `Your Divvy signup verification code is ${code}.\n\nIt expires in 15 minutes. Enter it in Divvy to verify your email before signing in. Never share this code. If you did not create an account, ignore this email.`);
+}
 async function sendEmail(email, subject, text) {
   const response = await fetch('https://api.resend.com/emails', {
     method: 'POST',
@@ -21,4 +24,4 @@ async function sendEmail(email, subject, text) {
   });
   if (!response.ok) throw new Error('Reset email delivery failed');
 }
-module.exports = { isConfigured, sendCode, sendEmailChangeCode };
+module.exports = { isConfigured, sendCode, sendEmailChangeCode, sendSignupCode };

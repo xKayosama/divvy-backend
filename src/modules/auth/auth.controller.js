@@ -1,6 +1,8 @@
 const bcrypt = require('bcryptjs');
 const User = require('../users/User');
 const { generateToken } = require('./jwt');
+const signupVerification = require('./signup-verification');
+const emailDelivery = require('./password-reset.email');
 const RevokedToken = require('./RevokedToken');
 
 const register = async (req, res) => {
@@ -32,19 +34,26 @@ const register = async (req, res) => {
       });
     }
 
+    if (!emailDelivery.isConfigured()) return res.status(503).json({ success: false, message: 'Email verification is temporarily unavailable. Please try again later.' });
+
     const hashedPassword = await bcrypt.hash(password, 12);
 
     const user = await User.create({
       firstName,
       lastName,
       email: email.trim().toLowerCase(),
-      password: hashedPassword
+      password: hashedPassword,
+      emailVerified: false
     });
+
+    const emailSent = await signupVerification.issueCode(user.email);
 
     return res.status(201).json({
       success: true,
-      message: 'Account created successfully.',
+      message: emailSent ? 'Check your email for a verification code before signing in.' : 'Account created, but the verification email could not be sent. Request another code.',
       data: {
+        requiresEmailVerification: true,
+        emailSent,
         user: {
           id: user._id,
           firstName: user.firstName,
@@ -106,6 +115,10 @@ const login = async (req, res) => {
         success: false,
         message: 'Invalid email or password.'
       });
+    }
+
+    if (user.emailVerified === false) {
+      return res.status(403).json({ success: false, code: 'EMAIL_NOT_VERIFIED', message: 'Verify your email before signing in.' });
     }
 
     // Generate JWT

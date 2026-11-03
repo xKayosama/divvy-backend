@@ -612,3 +612,9 @@ The minute worker uses per-device database leases and a daily state record. At/a
 Push registration is bound to token revocation/expiry and authVersion. Logged-out, expired and password-reset sessions cannot receive future reminders; client resumes re-register only an already-enabled device for the same account. Bodies contain counts only; payload IDs support safe account-bound navigation. Test pushes do not consume the daily reminder slot. Never log tokens or put EXPO_ACCESS_TOKEN in mobile public variables.
 
 Tests: `node --test test/notifications.test.js`. These mock the push service; actual device delivery requires platform credentials and a native build.
+
+### Signup email verification
+
+New registrations require email verification before login or authenticated API access. Existing accounts retain access. Configure the same backend-only `RESEND_API_KEY` and `PASSWORD_RESET_FROM` verified sender used for password reset. Signup returns 503 without email configuration; no account is created in that case.
+
+`POST /api/auth/register` returns `data.requiresEmailVerification: true` and `data.emailSent`. A delivery failure leaves a pending account that can recover using resend. No session is issued. `POST /api/auth/verify-email` accepts `{ email, code }`; success consumes the code and enables login. `POST /api/auth/resend-verification` accepts `{ email }` and returns a generic response for pending, verified, unknown or cooldown-limited accounts. Codes contain eight digits, expire after 15 minutes, have five attempts, and are stored as keyed hashes. Resend has a per-account 60-second cooldown and IP rate limits. Login with valid credentials for a pending account returns 403 with `code: EMAIL_NOT_VERIFIED`; clients should offer code entry and resend. Password reset does not bypass signup verification.

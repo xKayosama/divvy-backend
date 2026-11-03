@@ -12,6 +12,10 @@ const router = express.Router();
 router.post('/forgot-password', passwordResetRequestLimit, requestPasswordReset);
 router.post('/reset-password', passwordResetLimit, resetPassword);
 
+const signupVerification = require('./signup-verification');
+router.post('/verify-email', passwordResetLimit, signupVerification.verify);
+router.post('/resend-verification', passwordResetRequestLimit, signupVerification.resend);
+
 router.post('/register', registrationLimit, register);
 router.post('/login', loginLimit, login);
 router.post('/logout', protect, logout);

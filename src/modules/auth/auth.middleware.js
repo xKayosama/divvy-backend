@@ -38,6 +38,8 @@ const protect = async (req, res, next) => {
       });
     }
 
+    if (user.emailVerified === false) return res.status(403).json({ success: false, code: 'EMAIL_NOT_VERIFIED', message: 'Verify your email before signing in.' });
+
     if ((decoded.authVersion || 0) !== (user.authVersion || 0)) {
       return res.status(401).json({ success: false, message: 'Your password changed. Please sign in again.' });
     }
