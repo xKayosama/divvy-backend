@@ -134,7 +134,8 @@ const login = async (req, res) => {
           firstName: user.firstName,
           lastName: user.lastName,
           email: user.email,
-          role: user.role
+          role: user.role,
+          avatar: user.avatar ?? null
         }
       }
     });
@@ -180,7 +181,8 @@ const getMe = async (req, res) => {
         firstName: req.user.firstName,
         lastName: req.user.lastName,
         email: req.user.email,
-        role: req.user.role
+        role: req.user.role,
+        avatar: req.user.avatar ?? null
       }
     }
   });

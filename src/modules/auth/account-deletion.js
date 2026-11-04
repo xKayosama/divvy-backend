@@ -5,6 +5,7 @@ const Group = require('../groups/Group');
 const Member = require('../groups/GroupMember');
 const Device = require('../notifications/PushDevice');
 const Inbox = require('../notifications/InboxNotification');
+const { destroyAvatar } = require('./avatar.controller');
 const { validPassword, accountFilter } = require('./profile.controller');
 const fail = (res, status, message) => res.status(status).json({ success: false, message });
 async function ownershipPlan(userId) {
@@ -53,6 +54,7 @@ async function cleanup(userId) {
   const user = await User.findOne({ _id: userId, deletedAt: { $ne: null }, deletion: { $exists: true } }).select('+deletion');
   if (!user) return;
   await Member.updateMany({ userId, status: 'ACTIVE' }, { $set: { status: 'INACTIVE', role: 'MEMBER', accountDeleted: true } });
+  await destroyAvatar(user.deletion.avatarPublicId);
   await Device.deleteMany({ userId });
   await Inbox.deleteMany({ userId });
   const plan = await ownershipPlan(userId);
@@ -93,9 +95,9 @@ async function remove(req, res) {
     const groups = await ownershipPlan(user._id);
     if (planHash(groups) !== expectedPlan) return fail(res, 409, 'Your groups changed. Review the updated deletion details before confirming.');
     // This single write removes login identity and revokes every session before cleanup.
-    const deleted = await User.findOneAndUpdate({ ...accountFilter(req), password: user.password }, {
+    const deleted = await User.findOneAndUpdate({ ...accountFilter(req), password: user.password, avatarPublicId: user.avatarPublicId ?? null }, {
       $set: { firstName: 'Deleted', lastName: 'account', email: `deleted-${user._id}@account.divvy.invalid`,
-        password: randomBytes(48).toString('hex'), role: 'USER', avatar: null, deletedAt: new Date(), deletion: { email: user.email, finalizeAfter: new Date(Date.now() + 90000) } },
+        password: randomBytes(48).toString('hex'), role: 'USER', avatar: null, avatarPublicId: null, deletedAt: new Date(), deletion: { email: user.email, finalizeAfter: new Date(Date.now() + 90000), avatarPublicId: user.avatarPublicId } },
       $inc: { authVersion: 1 }, $unset: { passwordReset: 1, emailChange: 1 },
     }, { returnDocument: 'after' });
     if (!deleted) return fail(res, 409, 'Your account changed. Sign in again.');

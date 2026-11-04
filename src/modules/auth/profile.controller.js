@@ -4,7 +4,7 @@ const User = require('../users/User');
 const emailDelivery = require('./password-reset.email');
 const { generateToken } = require('./jwt');
 const fail = (res, status, message) => res.status(status).json({ success: false, message });
-const present = user => ({ id: user._id, firstName: user.firstName, lastName: user.lastName, email: user.email, role: user.role });
+const present = user => ({ id: user._id, firstName: user.firstName, lastName: user.lastName, email: user.email, role: user.role, avatar: user.avatar ?? null });
 const validEmail = email => typeof email === 'string' && email.length <= 254 && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
 const validPassword = password => typeof password === 'string' && password.length > 0 && Buffer.byteLength(password, 'utf8') <= 72;
 const codeHash = (id, email, code) => createHmac('sha256', process.env.JWT_SECRET).update(`email-change:${id}:${email}:${code}`).digest('hex');

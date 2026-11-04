@@ -47,7 +47,7 @@ const userSchema = new mongoose.Schema(
     },
     authVersion: { type: Number, default: 0 },
     deletedAt: { type: Date, default: null },
-    deletion: { type: new mongoose.Schema({ email: String, finalizeAfter: Date }, { _id: false }), select: false },
+    deletion: { type: new mongoose.Schema({ email: String, finalizeAfter: Date, avatarPublicId: String }, { _id: false }), select: false },
     emailChange: {
       type: new mongoose.Schema({
         email: String, codeHash: String, authVersion: Number,
@@ -55,6 +55,8 @@ const userSchema = new mongoose.Schema(
       }, { _id: false }),
       select: false
     },
+
+    avatarPublicId: { type: String, default: null },
 
     avatar: {
       type: String,

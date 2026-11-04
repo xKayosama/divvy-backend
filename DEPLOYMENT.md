@@ -69,3 +69,16 @@ runtime secrets; restore databases only through a reviewed recovery procedure.
 
 References: [Docker Node guide](https://docs.docker.com/guides/nodejs/),
 [Express health and shutdown](https://expressjs.com/en/advanced/healthcheck-graceful-shutdown/).
+
+## Profile photo storage
+
+Create a Cloudinary product environment and set its `CLOUDINARY_URL` in the
+backend secret manager, local backend `.env`, or `.env.production` for Compose.
+Restart the API after adding the secret. Keep this value out of frontend
+environment variables and source control. No MongoDB migration is required.
+
+Authenticated users can upload a JPEG, PNG, or WebP up to 5 MB with
+`PUT /api/auth/me/avatar` (multipart field `avatar`) and remove it with
+`DELETE /api/auth/me/avatar`. Cloudinary stores a 256 × 256 WebP under
+`divvy/avatars`. Avatars are served by public HTTPS URLs. Verify upload,
+refresh, replacement, and removal using a test account after deploying.

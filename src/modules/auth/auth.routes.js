@@ -25,6 +25,9 @@ const { rateLimit } = require('express-rate-limit');
 const accountLimit = rateLimit({ windowMs: 15 * 60000, limit: 20, standardHeaders: 'draft-8', legacyHeaders: false,
   keyGenerator: req => String(req.user._id), message: { success: false, message: 'Too many account requests. Please try again later.' } });
 router.patch('/me', protect, profile.updateProfile);
+const avatar = require('./avatar.controller');
+router.put('/me/avatar', protect, accountLimit, avatar.readAvatar, avatar.changeAvatar);
+router.delete('/me/avatar', protect, accountLimit, avatar.changeAvatar);
 router.post('/email-change', protect, accountLimit, profile.requestEmailChange);
 router.post('/email-change/confirm', protect, accountLimit, profile.confirmEmailChange);
 
