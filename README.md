@@ -579,7 +579,7 @@ Public routes:
 - `POST /api/auth/forgot-password` with `{ "email": "name@example.com" }` returns 200 and the same generic message for existing/unknown accounts and requests during the 60-second per-account cooldown.
 - `POST /api/auth/reset-password` with `{ "email": "name@example.com", "code": "01234567", "password": "new-password" }` returns 200 on success, 400 for invalid/expired/used codes or invalid input, and 503 on service failure. Passwords require at least 8 characters and at most 72 UTF-8 bytes, matching registration.
 
-Set backend-only `RESEND_API_KEY` and `PASSWORD_RESET_FROM` (for example `Divvy <reset@your-verified-domain.com>`). Verify the sender domain in Resend. No email credentials belong in Expo public variables. Without both settings, requests return 503 for every email. Provider failures are logged without email/code/password details, invalidate the issued code, and retain the generic response to avoid exposing account existence. Users can request another code after checking their inbox/spam folder. No console delivery mode exposes codes.
+For Resend, set backend-only `EMAIL_PROVIDER=resend`, `RESEND_API_KEY` and `PASSWORD_RESET_FROM` (for example `Divvy <reset@your-verified-domain.com>`). Verify the sender domain in Resend. No email credentials belong in Expo public variables. Without the selected provider’s required settings, requests return 503 for every email. Provider failures are logged without email/code/password details, invalidate the issued code, and retain the generic response to avoid exposing account existence. Users can request another code after checking their inbox/spam folder. No console delivery mode exposes codes.
 
 Codes are cryptographically random 8-digit strings (including leading zeros), valid for 15 minutes, with at most five verification attempts. Only an HMAC keyed with JWT_SECRET is persisted in a hidden User field. A newer request replaces the previous code; successful reset atomically changes the bcrypt password, consumes the code and increments authVersion, invalidating all previous access tokens, including legacy tokens. The next login issues the new version. No automatic login occurs after reset. Existing users require no migration (absent authVersion means zero).
 
@@ -615,6 +615,25 @@ Tests: `node --test test/notifications.test.js`. These mock the push service; ac
 
 ### Signup email verification
 
-New registrations require email verification before login or authenticated API access. Existing accounts retain access. Configure the same backend-only `RESEND_API_KEY` and `PASSWORD_RESET_FROM` verified sender used for password reset. Signup returns 503 without email configuration; no account is created in that case.
+New registrations require email verification before login or authenticated API access. Existing accounts retain access. Configure the same backend email provider used for password reset: Gmail SMTP or Resend (see below). Signup returns 503 without email configuration; no account is created in that case.
 
 `POST /api/auth/register` returns `data.requiresEmailVerification: true` and `data.emailSent`. A delivery failure leaves a pending account that can recover using resend. No session is issued. `POST /api/auth/verify-email` accepts `{ email, code }`; success consumes the code and enables login. `POST /api/auth/resend-verification` accepts `{ email }` and returns a generic response for pending, verified, unknown or cooldown-limited accounts. Codes contain eight digits, expire after 15 minutes, have five attempts, and are stored as keyed hashes. Resend has a per-account 60-second cooldown and IP rate limits. Login with valid credentials for a pending account returns 403 with `code: EMAIL_NOT_VERIFIED`; clients should offer code entry and resend. Password reset does not bypass signup verification.
+
+
+### Gmail SMTP without a custom domain
+
+Signup verification, resend, password reset and email-change codes all use the selected provider. Existing deployments default to Resend when `EMAIL_PROVIDER` is absent. Gmail selection never silently falls back to Resend on failure.
+
+1. Enable Google 2-Step Verification on a dedicated Gmail account.
+2. Generate a Google App Password at https://myaccount.google.com/apppasswords (availability depends on account settings).
+3. Set these backend-only variables locally and in your deployment environment:
+
+```env
+EMAIL_PROVIDER=gmail
+GMAIL_USER=your-divvy-account@gmail.com
+GMAIL_APP_PASSWORD=your-16-letter-app-password
+```
+
+Use the actual 16-letter App Password, not the placeholder or normal account password. Spaces in Google's displayed App Password are removed automatically. Never commit credentials or put them in frontend/mobile public variables. Restart the backend after updating the environment. Gmail sends from `Divvy <GMAIL_USER>` to each recipient's supplied account email; `PASSWORD_RESET_FROM` is only used by Resend. TLS on port 465 and bounded SMTP timeouts are configured automatically. An SMTP acceptance confirms submission, not inbox delivery. Gmail sending limits still apply; use a verified-domain transactional provider as the app grows.
+
+To switch back, set `EMAIL_PROVIDER=resend`, `RESEND_API_KEY`, and `PASSWORD_RESET_FROM` with a verified-domain sender.
