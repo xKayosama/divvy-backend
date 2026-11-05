@@ -54,4 +54,8 @@ router.delete(
 
 router.post('/:billId/pay',protect,recordGroup,payBill);
 
+require('../attachments/attachment.routes').registerAttachments(
+  router, Record, 'billId', protect, recordGroup,
+);
+
 module.exports = router;

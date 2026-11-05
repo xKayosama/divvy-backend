@@ -54,4 +54,8 @@ router.delete(
 
 router.patch('/:expenseId/recurrence',protect,recordGroup,updateRecurrence);
 
+require('../attachments/attachment.routes').registerAttachments(
+  router, Record, 'expenseId', protect, recordGroup,
+);
+
 module.exports = router;

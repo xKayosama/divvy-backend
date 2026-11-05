@@ -36,6 +36,7 @@ const expenseParticipantSchema = new mongoose.Schema(
 
 const expenseSchema = new mongoose.Schema(
   {
+    ...require('../attachments/attachment.fields'),
     groupId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Group',

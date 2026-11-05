@@ -2,6 +2,7 @@ const mongoose = require('mongoose');
 
 const billSchema = new mongoose.Schema(
   {
+    ...require('../attachments/attachment.fields'),
     groupId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Group',
