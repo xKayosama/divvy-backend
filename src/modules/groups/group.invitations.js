@@ -25,9 +25,10 @@ async function create(req, res) {
   try {
     // Fail closed until uniqueness indexes are ready; no transaction/replica set required.
     await Member.init();
-    const user = await User.findOne({ email });
+    const user = await User.findOne({ email, deletedAt: null });
+    if (!user) return fail(res, 404, 'No active registered account was found for this email. Ask the recipient to create an account first.');
     const existing = await Member.findOne({ groupId: req.group._id,
-      $or: [{ 'invitation.email': email }, ...(user ? [{ userId: user._id }] : [])]
+      $or: [{ 'invitation.email': email }, { userId: user._id }]
     }).select('+invitation');
     if (existing?.status === 'ACTIVE') return fail(res, 409, 'This person is already a member.');
     if (existing?.invitation?.status === 'PENDING' && existing.invitation.expiresAt > new Date()) return fail(res, 409, 'An invitation is already pending. Revoke it before creating another.');
@@ -42,7 +43,7 @@ async function create(req, res) {
       }, { $set: { invitation, role: 'MEMBER' } }, { returnDocument: 'after', runValidators: true }).select('+invitation');
       if (!member) return fail(res, 409, 'Membership changed. Refresh and try again.');
     } else {
-      member = await Member.create({ groupId: req.group._id, userId: user?._id, role: 'MEMBER', status: 'INACTIVE', invitation });
+      member = await Member.create({ groupId: req.group._id, userId: user._id, role: 'MEMBER', status: 'INACTIVE', invitation });
     }
     if (user) {
       try { await require('../notifications/inbox').record(user._id, 'invitation', `${member._id}:${now.toISOString()}`, {

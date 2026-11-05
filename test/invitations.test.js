@@ -25,9 +25,12 @@ function record() {
   createdAt: new Date('2026-01-01'), expiresAt: new Date(Date.now() + 86400000)
  } };
 }
-function setupCreate(existing = null, user = null) {
+function setupCreate(existing = null, user = { _id: userId, email, deletedAt: null, emailVerified: false }) {
  mock.method(Member, 'init', async () => {});
- mock.method(User, 'findOne', async () => user);
+ mock.method(User, 'findOne', async filter => {
+  assert.deepEqual(filter, { email, deletedAt: null });
+  return user?.deletedAt ? null : user;
+ });
  mock.method(Member, 'findOne', () => query(existing));
  mock.method(Member, 'create', async values => ({ _id: invitationId, ...values }));
 }
@@ -46,16 +49,30 @@ function setupResponse(value) {
  });
 }
 
-test('new and unregistered recipients remain inactive; raw code is returned once and only its hash is stored', async () => {
+test('registered recipients get inactive invitations; raw code is returned once and only its hash is stored', async () => {
  setupCreate(); const request = req(); request.body.email = ' FRIEND@example.com '; const res = response();
  await invitations.create(request, res);
  assert.equal(res.statusCode, 201); assert.match(res.body.data.code, /^[a-f0-9]{32}$/);
- assert.equal(Inbox.updateOne.mock.callCount(), 0);
+ assert.equal(Inbox.updateOne.mock.callCount(), 1);
  const stored = Member.create.mock.calls[0].arguments[0];
- assert.equal(stored.status, 'INACTIVE'); assert.equal(stored.userId, undefined); assert.equal(stored.invitation.email, email);
+ assert.equal(stored.status, 'INACTIVE'); assert.equal(stored.userId, userId); assert.equal(stored.invitation.email, email);
  assert.equal(stored.invitation.expiresAt - stored.invitation.createdAt, 7 * 86400000);
  assert.equal(stored.invitation.codeHash, createHash('sha256').update(res.body.data.code).digest('hex'));
  assert.equal(res.body.data.invitation.codeHash, undefined); assert.equal(res.body.data.invitation.group.name, group.name);
+});
+
+for (const [name, user] of [
+ ['unregistered', null],
+ ['deleted', { _id: userId, email, deletedAt: new Date() }],
+]) test(`creation rejects ${name} recipients before writing invitations or notifications`, async () => {
+ setupCreate(null, user);
+ const res = response();
+ await invitations.create(req(), res);
+ assert.equal(res.statusCode, 404);
+ assert.match(res.body.message, /active registered account/);
+ assert.equal(Member.findOne.mock.callCount(), 0);
+ assert.equal(Member.create.mock.callCount(), 0);
+ assert.equal(Inbox.updateOne.mock.callCount(), 0);
 });
 
 test('creation rejects nonowners, malformed emails, self invites, active members and duplicate pending invitations', async () => {
